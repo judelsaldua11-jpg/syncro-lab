@@ -1,0 +1,50 @@
+/* ============================================================     VARIABLES & RESET   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Space+Grotesk:wght@700;900&display=swap');
+
+:root {
+    --green: #a6ce39;
+    --dark: #12171b;
+    --light: #f8f9fb;
+    --gray: #9fa4a8;
+    --gray-dark: #68747b;
+    --font-heading: 'Space Grotesk', sans-serif;
+    --font-body: 'Inter', sans-serif;
+    --header-height: 108px;
+    --radius: 4px;
+    --transition: 0.2s ease;
+    --shadow: 0 16px 40px rgba(18, 23, 27, 0.06);
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    font-family: var(--font-body);
+    background-color: var(--dark);
+    color: var(--light);
+    padding-top: var(--header-height);
+}
+
+img {
+    display: block;
+    max-width: 100%;
+}
+
+a {
+    text-decoration: none;
+    color: inherit;
+}
+
+ul {
+    list-style: none;
+}

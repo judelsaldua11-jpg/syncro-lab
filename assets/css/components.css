@@ -1,0 +1,294 @@
+/* ============================================================     COMPONENTS (Cart, Modal, Cards)     ============================================================ */
+
+/* ----- Cart Drawer ----- */
+body.cart-open {
+    overflow: hidden;
+}
+
+.cart-drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    background-color: rgba(18, 23, 27, 0.55);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+}
+.cart-open .cart-drawer-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.cart-drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    z-index: 10001;
+    width: 440px;
+    max-width: 100%;
+    height: 100vh;
+    background-color: var(--light);
+    color: var(--dark);
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.cart-open .cart-drawer {
+    transform: translateX(0);
+}
+
+.cart-drawer-header,
+.cart-drawer-footer {
+    padding: 28px 32px;
+    border-color: rgba(18, 23, 27, 0.16);
+    border-style: solid;
+}
+.cart-drawer-header {
+    border-width: 0 0 1px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+.cart-drawer-eyebrow {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    color: var(--gray-dark);
+    margin-bottom: 6px;
+}
+.cart-drawer-header h2 {
+    font-family: var(--font-heading);
+    font-size: 28px;
+}
+.cart-drawer-close {
+    background: none;
+    border: 0;
+    font-size: 32px;
+    cursor: pointer;
+    color: var(--dark);
+    padding: 0 4px;
+}
+
+.cart-drawer-content {
+    flex: 1;
+    padding: 32px;
+    overflow-y: auto;
+}
+.cart-empty-state {
+    text-align: center;
+    margin-top: 40px;
+}
+.cart-empty-icon {
+    display: grid;
+    place-items: center;
+    width: 56px;
+    height: 56px;
+    margin: 0 auto 20px;
+    border: 2px solid var(--green);
+    border-radius: 50%;
+    font-size: 32px;
+    color: var(--green);
+}
+.cart-empty-state h3 {
+    font-family: var(--font-heading);
+    font-size: 22px;
+    margin-bottom: 10px;
+}
+.cart-empty-state p {
+    color: var(--gray-dark);
+}
+
+.cart-drawer-footer {
+    border-width: 1px 0 0;
+}
+.cart-drawer-total {
+    display: flex;
+    justify-content: space-between;
+    font-weight: 700;
+    margin-bottom: 20px;
+}
+.cart-full-link {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: var(--green);
+    color: var(--dark);
+    font-family: var(--font-heading);
+    font-size: 18px;
+    padding: 16px 18px;
+    border-radius: var(--radius);
+    transition: opacity var(--transition);
+}
+.cart-full-link:hover {
+    opacity: 0.9;
+}
+
+/* ----- Auth Modal ----- */
+.auth-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 11000;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+.auth-open .auth-modal {
+    visibility: visible;
+    opacity: 1;
+}
+.auth-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(18, 23, 27, 0.72);
+}
+.auth-modal-panel {
+    position: relative;
+    width: 480px;
+    max-width: 100%;
+    padding: 48px;
+    background-color: var(--light);
+    color: var(--dark);
+    transform: translateY(12px);
+    transition: transform 0.2s ease;
+    border-radius: var(--radius);
+}
+.auth-open .auth-modal-panel {
+    transform: translateY(0);
+}
+.auth-modal-close {
+    position: absolute;
+    top: 18px;
+    right: 22px;
+    background: none;
+    border: 0;
+    font-size: 32px;
+    cursor: pointer;
+    color: var(--dark);
+}
+
+.auth-modal-eyebrow {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    color: var(--gray-dark);
+    margin-bottom: 10px;
+}
+.auth-modal-panel h2,
+.auth-form-panel h1 {
+    font-family: var(--font-heading);
+    font-size: 42px;
+}
+.auth-modal-copy {
+    color: var(--gray-dark);
+    margin-top: 18px;
+    line-height: 1.5;
+}
+.auth-modal-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 28px;
+}
+
+/* ----- Service & Hardware Cards ----- */
+.service-card {
+    background-color: var(--dark);
+    border-radius: var(--radius);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+}
+.service-card .card-image {
+    height: 200px;
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+.service-card .card-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.service-card .card-content {
+    padding: 16px 8px 8px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+.service-card h3 {
+    font-family: var(--font-heading);
+    color: var(--light);
+    font-size: 28px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+}
+.service-card p {
+    color: var(--gray);
+    font-size: 22px;
+    line-height: 1.2;
+    flex: 1;
+    margin-bottom: 20px;
+}
+
+.btn-explore {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    max-width: 292px;
+    height: 60px;
+    border: 2px solid var(--green);
+    color: var(--green);
+    font-family: var(--font-heading);
+    font-weight: 700;
+    font-size: 24px;
+    border-radius: var(--radius);
+    transition: all var(--transition);
+    margin: 0 auto;
+}
+.btn-explore:hover {
+    background-color: var(--green);
+    color: var(--dark);
+}
+
+.hardware-card {
+    background-color: rgba(159, 164, 168, 0.2);
+    border: 3px solid var(--gray);
+    border-radius: var(--radius);
+    padding: 24px 32px 32px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 420px;
+}
+.card-header {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--font-heading);
+    font-weight: 700;
+    font-size: 20px;
+    text-transform: uppercase;
+}
+.hardware-image {
+    height: 260px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.hardware-image img {
+    max-height: 100%;
+    object-fit: contain;
+}
+.product-title {
+    font-family: var(--font-heading);
+    font-size: 26px;
+    font-weight: 700;
+    text-transform: uppercase;
+    text-align: center;
+    margin-top: 12px;
+}
