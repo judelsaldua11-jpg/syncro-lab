@@ -48,7 +48,7 @@ $cartCount = getCartCount($pdo, $cartId);
     <!-- Header Right Actions -->
     <div class="header-actions">
         <!-- BOOK SERVICE Button -->
-        <a href="#book" class="btn btn--green btn--small">BOOK SERVICE</a>
+        <a href="pages/booking.php" class="btn btn--green btn--small">BOOK SERVICE</a>
 
         <!-- Cart Button -->
         <button type="button" class="icon-btn cart-btn" aria-label="Open cart" aria-controls="cart-drawer" aria-expanded="false">

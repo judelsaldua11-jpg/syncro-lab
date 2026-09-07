@@ -1,6 +1,9 @@
 <?php
 // pages/admin/dashboard.php - Admin Dashboard
 
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
 session_start();
 require_once __DIR__ . '/../../database/config.php';
 require_once __DIR__ . '/../../inc/functions.php';
@@ -122,13 +125,13 @@ include __DIR__ . '/../../src/Views/layouts/header.php';
                     <p style="color: var(--gray-dark); font-size: 14px; margin-top: 8px;">Manage product catalog and featured items</p>
                 </a>
                 <a href="inventory.php" style="text-decoration: none; background: #fff; padding: 24px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.2s ease;">
-                    <h3 style="font-family: var(--font-heading); font-size: 20px; color: var(--dark);">📦 Inventory</h3>
+                    <h3 style="font-family: var(--font-heading); font-size: 20px; color: var(--dark);;">📦 Inventory</h3>
                     <p style="color: var(--gray-dark); font-size: 14px; margin-top: 8px;">Manage stock across all branches</p>
                 </a>
-                <div style="background: #fff; padding: 24px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); opacity: 0.6;">
-                    <h3 style="font-family: var(--font-heading); font-size: 20px; color: var(--gray-dark);">📊 Orders</h3>
-                    <p style="color: var(--gray-dark); font-size: 14px; margin-top: 8px;">Coming soon</p>
-                </div>
+                <a href="bookings.php" style="text-decoration: none; background: #fff; padding: 24px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.2s ease;">
+                    <h3 style="font-family: var(--font-heading); font-size: 20px; color: var(--dark);">📅 Bookings</h3>
+                    <p style="color: var(--gray-dark); font-size: 14px; margin-top: 8px;">Manage customer service appointments</p>
+                </a>
             </div>
 
             <!-- Additional Stats -->
@@ -191,10 +194,10 @@ include __DIR__ . '/../../src/Views/layouts/header.php';
                     <h3 style="font-family: var(--font-heading); font-size: 20px; color: var(--dark);">➕ Add Stock</h3>
                     <p style="color: var(--gray-dark); font-size: 14px; margin-top: 8px;">Add new items to inventory</p>
                 </a>
-                <div style="background: #fff; padding: 24px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); opacity: 0.6;">
-                    <h3 style="font-family: var(--font-heading); font-size: 20px; color: var(--gray-dark);">📅 Bookings</h3>
-                    <p style="color: var(--gray-dark); font-size: 14px; margin-top: 8px;">Coming soon</p>
-                </div>
+                <a href="bookings.php" style="text-decoration: none; background: #fff; padding: 24px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.2s ease;">
+                    <h3 style="font-family: var(--font-heading); font-size: 20px; color: var(--dark);">📅 Bookings</h3>
+                    <p style="color: var(--gray-dark); font-size: 14px; margin-top: 8px;">Manage customer service appointments</p>
+                </a>
             </div>
 
             <!-- Pending Bookings -->
@@ -202,7 +205,7 @@ include __DIR__ . '/../../src/Views/layouts/header.php';
                 <h3 style="font-family: var(--font-heading); font-size: 18px; margin-bottom: 16px;">📅 Pending Bookings</h3>
                 <?php if ($stats['pending_bookings'] > 0): ?>
                     <p><strong><?= $stats['pending_bookings'] ?></strong> booking(s) waiting for confirmation.</p>
-                    <a href="#" style="color: var(--green); font-weight: 600;">View all bookings →</a>
+                    <a href="bookings.php" style="color: var(--green); font-weight: 600;">View all bookings →</a>
                 <?php else: ?>
                     <p style="color: var(--gray-dark);">No pending bookings. ✅</p>
                 <?php endif; ?>

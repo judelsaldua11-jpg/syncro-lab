@@ -6,7 +6,7 @@
         <p class="hero-subtext">High-end parts, custom bike builds, and<br>master-certified mechanics for road and trail.</p>
         <div class="hero-buttons">
             <a href="pages/shop.php" class="btn btn--green">SHOP NOW</a>
-            <a href="#book" class="btn btn--outline">BOOK NOW</a>
+            <a href="pages/booking.php" class="btn btn--outline">BOOK NOW</a>
         </div>
     </div>
 </section>
