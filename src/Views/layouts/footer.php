@@ -1,3 +1,13 @@
+<?php
+// Start session if not already started
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+$isLoggedIn = isset($_SESSION['user_id']);
+$userName = $isLoggedIn ? ($_SESSION['user_name'] ?? 'User') : '';
+$userRole = $isLoggedIn ? ($_SESSION['role'] ?? 'customer') : '';
+?>
+
 <!-- FOOTER SECTION -->
 <footer class="site-footer" aria-label="Site Footer">
     <div class="footer-container">
@@ -63,7 +73,7 @@
             </div>
         </div>
         <div class="footer-copyright">
-            <p>© 2026 SYNCHRO LAB. All rights reserved</p>
+            <p>© 2026 SYNCRO LAB. All rights reserved</p>
         </div>
     </div>
 </footer>
@@ -73,13 +83,38 @@
     <div class="auth-modal-backdrop" data-auth-close></div>
     <section class="auth-modal-panel" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title">
         <button type="button" class="auth-modal-close" data-auth-close aria-label="Close account prompt">&times;</button>
-        <p class="auth-modal-eyebrow">SYNCRO LAB ACCOUNT</p>
-        <h2 id="auth-modal-title">ACCOUNT REQUIRED</h2>
-        <p class="auth-modal-copy">Log in or create an account to book a service, register, or continue with your cart.</p>
-        <div class="auth-modal-actions">
-            <a class="btn btn--green" href="auth.php?mode=login">LOG IN</a>
-            <a class="btn btn--outline" href="auth.php?mode=signup">SIGN UP</a>
-        </div>
+        
+        <?php if ($isLoggedIn): ?>
+            <!-- LOGGED IN: Show User Info -->
+            <p class="auth-modal-eyebrow">WELCOME BACK</p>
+            <h2 id="auth-modal-title"><?= htmlspecialchars($userName) ?></h2>
+            <p style="color: var(--gray-dark); margin-top: 8px; font-size: 14px;">
+                <?php
+                $roleLabels = [
+                    'customer' => 'Customer',
+                    'branch_manager' => 'Branch Manager',
+                    'hq_admin' => 'HQ Admin'
+                ];
+                echo $roleLabels[$userRole] ?? 'User';
+                ?>
+            </p>
+            <div class="auth-modal-actions" style="flex-direction: column; gap: 8px; margin-top: 24px;">
+                <a href="pages/profile.php" class="btn btn--green" style="width: 100%; justify-content: center;">MY PROFILE</a>
+                <?php if ($userRole === 'hq_admin' || $userRole === 'branch_manager'): ?>
+                    <a href="pages/admin/dashboard.php" class="btn btn--outline" style="width: 100%; justify-content: center;">DASHBOARD</a>
+                <?php endif; ?>
+                <a href="pages/auth/logout.php" class="btn btn--dark" style="width: 100%; justify-content: center; border-color: var(--dark);">LOGOUT</a>
+            </div>
+        <?php else: ?>
+            <!-- LOGGED OUT: Show Login/Signup -->
+            <p class="auth-modal-eyebrow">SYNCRO LAB ACCOUNT</p>
+            <h2 id="auth-modal-title">ACCOUNT REQUIRED</h2>
+            <p class="auth-modal-copy">Log in or create an account to book a service, register, or continue with your cart.</p>
+            <div class="auth-modal-actions">
+                <a class="btn btn--green" href="pages/auth/login.php" style="flex: 1; justify-content: center;">LOG IN</a>
+                <a class="btn btn--outline" href="pages/auth/register.php" style="flex: 1; justify-content: center;">SIGN UP</a>
+            </div>
+        <?php endif; ?>
     </section>
 </div>
 
