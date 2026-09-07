@@ -98,20 +98,6 @@ function getMembershipDiscount() {
 }
 
 // ============================================
-// CART FUNCTIONS
-// ============================================
-
-function getCartCount() {
-    if (isset($_SESSION['user_id'])) {
-        $pdo = getConnection();
-        $stmt = $pdo->prepare("SELECT SUM(quantity) FROM cart_items WHERE cart_id = (SELECT id FROM cart WHERE user_id = ?)");
-        $stmt->execute([$_SESSION['user_id']]);
-        return (int) $stmt->fetchColumn();
-    }
-    return 0;
-}
-
-// ============================================
 // BRANCH FUNCTIONS
 // ============================================
 
@@ -173,4 +159,187 @@ function getOrderStatusLabel($status) {
         'returned' => 'Returned'
     ];
     return $labels[$status] ?? ucfirst($status);
+}
+
+// ============================================
+// CART FUNCTIONS
+// ============================================
+
+function getOrCreateCart($pdo, $userId = null) {
+    $sessionId = session_id();
+    
+    if ($userId) {
+        // Check if user has a cart
+        $stmt = $pdo->prepare("SELECT id FROM cart WHERE user_id = ?");
+        $stmt->execute([$userId]);
+        $cart = $stmt->fetch();
+        if ($cart) {
+            return $cart['id'];
+        }
+        // Create new cart for user
+        $stmt = $pdo->prepare("INSERT INTO cart (user_id) VALUES (?)");
+        $stmt->execute([$userId]);
+        return $pdo->lastInsertId();
+    } else {
+        // Guest cart using session_id
+        $stmt = $pdo->prepare("SELECT id FROM cart WHERE session_id = ?");
+        $stmt->execute([$sessionId]);
+        $cart = $stmt->fetch();
+        if ($cart) {
+            return $cart['id'];
+        }
+        // Create new cart for session
+        $stmt = $pdo->prepare("INSERT INTO cart (session_id) VALUES (?)");
+        $stmt->execute([$sessionId]);
+        return $pdo->lastInsertId();
+    }
+}
+
+function addToCart($pdo, $cartId, $productId, $quantity = 1) {
+    // Check if item already in cart
+    $stmt = $pdo->prepare("SELECT id, quantity FROM cart_items WHERE cart_id = ? AND product_id = ?");
+    $stmt->execute([$cartId, $productId]);
+    $item = $stmt->fetch();
+    
+    if ($item) {
+        // Update quantity
+        $newQty = $item['quantity'] + $quantity;
+        $stmt = $pdo->prepare("UPDATE cart_items SET quantity = ? WHERE id = ?");
+        $stmt->execute([$newQty, $item['id']]);
+        return true;
+    } else {
+        // Insert new item
+        $stmt = $pdo->prepare("INSERT INTO cart_items (cart_id, product_id, quantity) VALUES (?, ?, ?)");
+        $stmt->execute([$cartId, $productId, $quantity]);
+        return true;
+    }
+}
+
+function removeFromCart($pdo, $cartId, $productId) {
+    $stmt = $pdo->prepare("DELETE FROM cart_items WHERE cart_id = ? AND product_id = ?");
+    $stmt->execute([$cartId, $productId]);
+    return true;
+}
+
+function updateCartQuantity($pdo, $cartId, $productId, $quantity) {
+    if ($quantity <= 0) {
+        return removeFromCart($pdo, $cartId, $productId);
+    }
+    $stmt = $pdo->prepare("UPDATE cart_items SET quantity = ? WHERE cart_id = ? AND product_id = ?");
+    $stmt->execute([$quantity, $cartId, $productId]);
+    return true;
+}
+
+function getCartItems($pdo, $cartId) {
+    $stmt = $pdo->prepare("
+        SELECT 
+            ci.id AS cart_item_id,
+            ci.product_id,
+            ci.quantity,
+            p.name AS product_name,
+            p.sku,
+            p.price,
+            p.brand,
+            (SELECT file_path FROM product_images WHERE product_id = p.id AND is_primary = 1 LIMIT 1) AS image,
+            (SELECT COUNT(*) FROM inventory WHERE product_id = p.id AND status = 'in_stock') AS total_stock
+        FROM cart_items ci
+        JOIN products p ON ci.product_id = p.id
+        WHERE ci.cart_id = ?
+    ");
+    $stmt->execute([$cartId]);
+    return $stmt->fetchAll();
+}
+
+function getCartTotal($pdo, $cartId) {
+    $stmt = $pdo->prepare("
+        SELECT SUM(ci.quantity * p.price) AS total
+        FROM cart_items ci
+        JOIN products p ON ci.product_id = p.id
+        WHERE ci.cart_id = ?
+    ");
+    $stmt->execute([$cartId]);
+    $result = $stmt->fetch();
+    return $result['total'] ?? 0;
+}
+
+function getCartCount($pdo, $cartId) {
+    $stmt = $pdo->prepare("SELECT SUM(quantity) AS count FROM cart_items WHERE cart_id = ?");
+    $stmt->execute([$cartId]);
+    $result = $stmt->fetch();
+    return (int)($result['count'] ?? 0);
+}
+
+function clearCart($pdo, $cartId) {
+    $stmt = $pdo->prepare("DELETE FROM cart_items WHERE cart_id = ?");
+    $stmt->execute([$cartId]);
+    return true;
+}
+
+// ============================================
+// BRANCH FUNCTIONS (Nearest Branch)
+// ============================================
+
+function getNearestBranchWithStock($pdo, $productIds, $userLat, $userLng) {
+    // Build placeholders for product IDs
+    $placeholders = implode(',', array_fill(0, count($productIds), '?'));
+    
+    $sql = "
+        SELECT 
+            b.id AS branch_id,
+            b.name AS branch_name,
+            b.address,
+            b.latitude,
+            b.longitude,
+            (6371 * acos(
+                cos(radians(?)) * cos(radians(b.latitude)) * 
+                cos(radians(b.longitude) - radians(?)) + 
+                sin(radians(?)) * sin(radians(b.latitude))
+            )) AS distance,
+            COUNT(DISTINCT i.product_id) AS products_in_stock
+        FROM branches b
+        JOIN inventory i ON b.id = i.branch_id
+        WHERE i.product_id IN ($placeholders)
+            AND i.status = 'in_stock'
+            AND b.is_active = 1
+        GROUP BY b.id
+        HAVING products_in_stock = ?
+        ORDER BY distance ASC
+        LIMIT 1
+    ";
+    
+    $params = array_merge([$userLat, $userLng, $userLat], $productIds, [count($productIds)]);
+    
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    return $stmt->fetch();
+}
+
+// ============================================
+// RESERVATION FUNCTIONS
+// ============================================
+
+function reserveInventory($pdo, $productId, $branchId, $quantity) {
+    $stmt = $pdo->prepare("
+        UPDATE inventory 
+        SET status = 'reserved', 
+            reserved_until = DATE_ADD(NOW(), INTERVAL 15 MINUTE)
+        WHERE product_id = ? 
+          AND branch_id = ? 
+          AND status = 'in_stock'
+        LIMIT ?
+    ");
+    $stmt->execute([$productId, $branchId, $quantity]);
+    return $stmt->rowCount();
+}
+
+function releaseExpiredReservations($pdo) {
+    $stmt = $pdo->prepare("
+        UPDATE inventory 
+        SET status = 'in_stock', 
+            reserved_until = NULL
+        WHERE status = 'reserved' 
+          AND reserved_until < NOW()
+    ");
+    $stmt->execute();
+    return $stmt->rowCount();
 }

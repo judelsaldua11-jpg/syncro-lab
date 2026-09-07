@@ -14,7 +14,7 @@ $userRole = $isLoggedIn ? ($_SESSION['role'] ?? 'customer') : '';
         <div class="footer-content">
             <div class="footer-brand-col">
                 <div class="footer-logo">
-                    <img src="assets/images/syncro-lab-dark.svg" alt="SYNCRO LAB Logo" class="footer-logo-img">
+                    <img src="/syncro lab/assets/images/syncro-lab-dark.svg" alt="SYNCRO LAB Logo" class="footer-logo-img">
                 </div>
                 <p class="footer-address">
                     Dumaguete City,<br>
@@ -118,6 +118,6 @@ $userRole = $isLoggedIn ? ($_SESSION['role'] ?? 'customer') : '';
     </section>
 </div>
 
-<script src="assets/js/main.js"></script>
+<script src="/syncro lab/assets/js/main.js"></script>
 </body>
 </html>

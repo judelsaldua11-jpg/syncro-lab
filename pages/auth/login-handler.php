@@ -27,12 +27,22 @@ if (!$user || !verifyPassword($password, $user['password_hash'])) {
     exit;
 }
 
-// Login successful
+// Login successful - store basic user info
 $_SESSION['user_id'] = $user['id'];
 $_SESSION['user_email'] = $user['email'];
 $_SESSION['user_name'] = $user['full_name'];
 $_SESSION['role'] = $user['role'];
 $_SESSION['branch_id'] = $user['branch_id'];
+
+// If user is a branch manager, get their branch name
+if ($user['role'] === 'branch_manager' && !empty($user['branch_id'])) {
+    $stmt2 = $pdo->prepare("SELECT name FROM branches WHERE id = ? AND is_active = 1");
+    $stmt2->execute([$user['branch_id']]);
+    $branch = $stmt2->fetch();
+    $_SESSION['branch_name'] = $branch['name'] ?? 'Your Branch';
+} else {
+    $_SESSION['branch_name'] = '';
+}
 
 header('Location: ../../index.php');
 exit;

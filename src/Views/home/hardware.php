@@ -1,48 +1,62 @@
+<?php
+// src/Views/home/hardware.php - Featured Hardware (Dynamic)
+
+// Get featured products from database
+$stmt = $pdo->query("
+    SELECT p.*, 
+           (SELECT COUNT(*) FROM inventory WHERE product_id = p.id AND status = 'in_stock') AS total_stock,
+           (SELECT file_path FROM product_images WHERE product_id = p.id AND is_primary = 1 LIMIT 1) AS image
+    FROM products p
+    WHERE p.is_active = 1 
+      AND p.is_phase_out = 0
+      AND p.is_featured = 1
+    ORDER BY p.id ASC       -- This matches the mockup order
+    LIMIT 4
+");
+$featuredProducts = $stmt->fetchAll();
+
+// Map product IDs to their original bracket tags
+$badgeMap = [
+    1 => '[FEATURED BUILD]',
+    2 => '[NEW ARRIVAL COMPONENTS]',
+    3 => '[RIDER GEAR]',
+    4 => '[TELEMETRY TECH]'
+];
+?>
+
 <!-- SECTION 5: FEATURED HARDWARE & BUILDS -->
 <section id="catalog" class="hardware-section" aria-label="Featured Hardware and Builds">
     <div class="hardware-container">
         <h2 class="section-title" id="featured-hardware-heading">FEATURED HARDWARE & BUILDS</h2>
         <div class="hardware-grid" role="region" aria-labelledby="featured-hardware-heading">
-            <article class="hardware-card" aria-label="S-Works Tarmac SL8 Custom Product Card">
-                <div class="card-header">
-                    <span class="category-tag" aria-label="Category">[FEATURED BUILD]</span>
-                    <span class="stock-tag" aria-label="Stock Status">IN STOCK: 1</span>
-                </div>
-                <div class="hardware-image">
-                    <img src="assets/images/s-works-tarmac.png" alt="S-Works Tarmac SL8 Custom Bicycle">
-                </div>
-                <h3 class="product-title">S-WORKS TARMAC SL8 CUSTOM</h3>
-            </article>
-            <article class="hardware-card" aria-label="Shimano Dura-Ace R9200 Product Card">
-                <div class="card-header">
-                    <span class="category-tag" aria-label="Category">[NEW ARRIVAL COMPONENTS]</span>
-                    <span class="stock-tag" aria-label="Stock Status">IN STOCK: 14</span>
-                </div>
-                <div class="hardware-image">
-                    <img src="assets/images/shimano-dura-ace.png" alt="Shimano Dura-Ace R9200 Groupset">
-                </div>
-                <h3 class="product-title">SHIMANO DURA-ACE R9200</h3>
-            </article>
-            <article class="hardware-card" aria-label="Canyon Gorpcore Rain Jacket Product Card">
-                <div class="card-header">
-                    <span class="category-tag" aria-label="Category">[RIDER GEAR]</span>
-                    <span class="stock-tag" aria-label="Stock Status">IN STOCK: 17</span>
-                </div>
-                <div class="hardware-image">
-                    <img src="assets/images/canyon-jacket.png" alt="Canyon Gorpcore Rain Jacket">
-                </div>
-                <h3 class="product-title">CANYON GORPCORE RAIN JACKET</h3>
-            </article>
-            <article class="hardware-card" aria-label="CeramicSpeed BB Unit Product Card">
-                <div class="card-header">
-                    <span class="category-tag" aria-label="Category">[TELEMETRY TECH]</span>
-                    <span class="stock-tag" aria-label="Stock Status">IN STOCK: 20</span>
-                </div>
-                <div class="hardware-image">
-                    <img src="assets/images/ceramicspeed-bb.png" alt="CeramicSpeed Bottom Bracket Unit">
-                </div>
-                <h3 class="product-title">CERAMICSPEED BB UNIT</h3>
-            </article>
+            
+            <?php if (empty($featuredProducts)): ?>
+                <p style="color: var(--dark); grid-column: 1 / -1; text-align: center; padding: 40px 0;">
+                    No featured products available. Check the shop for our full selection!
+                </p>
+            <?php else: ?>
+                <?php foreach ($featuredProducts as $product): ?>
+                    <a href="pages/product-detail.php?id=<?= $product['id'] ?>" 
+                       style="text-decoration: none; color: inherit; display: block;">
+                        <article class="hardware-card" aria-label="<?= htmlspecialchars($product['name']) ?> Product Card">
+                            <div class="card-header">
+                                <span class="category-tag" aria-label="Category">
+                                    <?= $badgeMap[$product['id']] ?? '[FEATURED]' ?>
+                                </span>
+                                <span class="stock-tag" aria-label="Stock Status">
+                                    IN STOCK: <?= (int) $product['total_stock'] ?>
+                                </span>
+                            </div>
+                            <div class="hardware-image">
+                                <img src="<?= !empty($product['image']) ? htmlspecialchars($product['image']) : 'assets/images/placeholder.png' ?>" 
+                                     alt="<?= htmlspecialchars($product['name']) ?>">
+                            </div>
+                            <h3 class="product-title"><?= htmlspecialchars($product['name']) ?></h3>
+                        </article>
+                    </a>
+                <?php endforeach; ?>
+            <?php endif; ?>
+            
         </div>
     </div>
 </section>

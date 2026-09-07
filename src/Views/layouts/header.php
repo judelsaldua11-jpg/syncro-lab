@@ -1,13 +1,14 @@
 <?php
-// Start session if not already started
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+// src/Views/layouts/header.php
+// Session, database, and functions are already loaded by index.php
 
-// Get user info for modal
-$isLoggedIn = isset($_SESSION['user_id']);
-$userName = $isLoggedIn ? ($_SESSION['user_name'] ?? 'User') : '';
-$userRole = $isLoggedIn ? ($_SESSION['role'] ?? 'customer') : '';
+// Get cart data using the already-loaded functions
+$pdo = getConnection();
+$userId = $_SESSION['user_id'] ?? null;
+$cartId = getOrCreateCart($pdo, $userId);
+$cartItems = getCartItems($pdo, $cartId);
+$cartTotal = getCartTotal($pdo, $cartId);
+$cartCount = getCartCount($pdo, $cartId);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -15,7 +16,7 @@ $userRole = $isLoggedIn ? ($_SESSION['role'] ?? 'customer') : '';
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SYNCRO LAB</title>
-    <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="/syncro lab/assets/css/style.css">
 </head>
 <body>
 
@@ -23,7 +24,7 @@ $userRole = $isLoggedIn ? ($_SESSION['role'] ?? 'customer') : '';
 <header class="site-header">
     <!-- Brand Logo -->
     <a href="#home" class="brand-logo">
-        <img src="assets/images/syncro-lab-light.svg" alt="SYNCRO LAB Logo" class="logo-img">
+        <img src="/syncro lab/assets/images/syncro-lab-light.svg" alt="SYNCRO LAB Logo" class="logo-img">
     </a>
 
     <!-- Navigation Links -->
@@ -61,7 +62,7 @@ $userRole = $isLoggedIn ? ($_SESSION['role'] ?? 'customer') : '';
                     </clipPath>
                 </defs>
             </svg>
-            <span class="cart-count">[0]</span>
+            <span class="cart-count">[<?= $cartCount ?>]</span>
         </button>
 
         <!-- Account Icon (Triggers Auth Modal) -->
@@ -84,14 +85,26 @@ $userRole = $isLoggedIn ? ($_SESSION['role'] ?? 'customer') : '';
         <button type="button" class="cart-drawer-close" data-cart-close aria-label="Close cart">&times;</button>
     </div>
     <div class="cart-drawer-content">
-        <div class="cart-empty-state">
-            <span class="cart-empty-icon" aria-hidden="true">+</span>
-            <h3>Your cart is empty</h3>
-            <p>Add precision parts, rider gear, or a service to get started.</p>
-        </div>
+        <?php if (empty($cartItems)): ?>
+            <div class="cart-empty-state">
+                <span class="cart-empty-icon" aria-hidden="true">+</span>
+                <h3>Your cart is empty</h3>
+                <p>Add precision parts, rider gear, or a service to get started.</p>
+            </div>
+        <?php else: ?>
+            <?php foreach ($cartItems as $item): ?>
+                <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee;">
+                    <span><?= htmlspecialchars($item['product_name']) ?> × <?= $item['quantity'] ?></span>
+                    <span>₱ <?= number_format($item['price'] * $item['quantity'], 2) ?></span>
+                </div>
+            <?php endforeach; ?>
+            <div style="margin-top: 12px; padding-top: 12px; border-top: 2px solid var(--green); font-weight: 700;">
+                Total: ₱ <?= number_format($cartTotal, 2) ?>
+            </div>
+        <?php endif; ?>
     </div>
     <div class="cart-drawer-footer">
-        <div class="cart-drawer-total"><span>SUBTOTAL</span><strong>PHP 0.00</strong></div>
-        <a href="cart.php" class="cart-full-link">EXPLORE CART <span aria-hidden="true">&#8594;</span></a>
+        <div class="cart-drawer-total"><span>SUBTOTAL</span><strong>PHP <?= number_format($cartTotal, 2) ?></strong></div>
+        <a href="pages/cart.php" class="cart-full-link">EXPLORE CART <span aria-hidden="true">&#8594;</span></a>
     </div>
 </aside>
