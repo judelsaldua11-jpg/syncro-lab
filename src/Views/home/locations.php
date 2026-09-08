@@ -1,7 +1,9 @@
-<!-- SECTION 6: LOCATION -->
+<!-- SECTION: LAB LOCATIONS -->
 <section id="locations" class="locations-section" aria-label="Lab Locations">
     <div class="locations-container">
         <h2 class="section-title">LAB LOCATIONS</h2>
+
+        <!-- Search & Filter Bar -->
         <div class="search-bar">
             <input type="text" class="search-input" placeholder="FIND A LAB" aria-label="Find a lab location">
             <div class="search-icons">
@@ -22,8 +24,12 @@
                 </svg>
             </div>
         </div>
+
+        <!-- Locations List -->
         <div class="locations-list">
-            <div class="location-card">
+            
+            <!-- Location 1: North HQ -->
+            <div class="location-card" data-branch-id="1">
                 <div class="location-info">
                     <h3 class="location-name">NORTH HQ</h3>
                     <p class="location-address">
@@ -32,11 +38,20 @@
                     </p>
                 </div>
                 <div class="location-actions">
-                    <a href="#directions" class="btn btn--small btn--outline">SHOW DIRECTIONS</a>
-                    <a href="#book" class="btn btn--small btn--green">BOOK LAB</a>
+                    <a href="https://maps.app.goo.gl/xYTAQcm2TJYEF1FX9" 
+                       target="_blank" 
+                       class="btn btn--small btn--outline">
+                        SHOW DIRECTIONS
+                    </a>
+                    <a href="/syncro lab/pages/booking.php?branch=1" 
+                       class="btn btn--small btn--green">
+                        BOOK LAB
+                    </a>
                 </div>
             </div>
-            <div class="location-card">
+
+            <!-- Location 2: Downtown Workshop -->
+            <div class="location-card" data-branch-id="2">
                 <div class="location-info">
                     <h3 class="location-name">DOWNTOWN WORKSHOP</h3>
                     <p class="location-address">
@@ -45,11 +60,20 @@
                     </p>
                 </div>
                 <div class="location-actions">
-                    <a href="#directions" class="btn btn--small btn--outline">SHOW DIRECTIONS</a>
-                    <a href="#book" class="btn btn--small btn--green">BOOK LAB</a>
+                    <a href="https://maps.app.goo.gl/7mPcC7Qheejxka6NA" 
+                       target="_blank" 
+                       class="btn btn--small btn--outline">
+                        SHOW DIRECTIONS
+                    </a>
+                    <a href="/syncro lab/pages/booking.php?branch=2" 
+                       class="btn btn--small btn--green">
+                        BOOK LAB
+                    </a>
                 </div>
             </div>
-            <div class="location-card">
+
+            <!-- Location 3: Metro Manila Metrology -->
+            <div class="location-card" data-branch-id="3">
                 <div class="location-info">
                     <h3 class="location-name">METRO MANILA METROLOGY</h3>
                     <p class="location-address">
@@ -58,11 +82,20 @@
                     </p>
                 </div>
                 <div class="location-actions">
-                    <a href="#directions" class="btn btn--small btn--outline">SHOW DIRECTIONS</a>
-                    <a href="#book" class="btn btn--small btn--green">BOOK LAB</a>
+                    <a href="https://maps.app.goo.gl/o97zip83keZY3f567" 
+                       target="_blank" 
+                       class="btn btn--small btn--outline">
+                        SHOW DIRECTIONS
+                    </a>
+                    <a href="/syncro lab/pages/booking.php?branch=3" 
+                       class="btn btn--small btn--green">
+                        BOOK LAB
+                    </a>
                 </div>
             </div>
-            <div class="location-card">
+
+            <!-- Location 4: Nuvali Trail & Road Station -->
+            <div class="location-card" data-branch-id="4">
                 <div class="location-info">
                     <h3 class="location-name">NUVALI TRAIL & ROAD STATION</h3>
                     <p class="location-address">
@@ -71,11 +104,20 @@
                     </p>
                 </div>
                 <div class="location-actions">
-                    <a href="#directions" class="btn btn--small btn--outline">SHOW DIRECTIONS</a>
-                    <a href="#book" class="btn btn--small btn--green">BOOK LAB</a>
+                    <a href="https://maps.app.goo.gl/sByxcaWK2ZV5tUGB9" 
+                       target="_blank" 
+                       class="btn btn--small btn--outline">
+                        SHOW DIRECTIONS
+                    </a>
+                    <a href="/syncro lab/pages/booking.php?branch=4" 
+                       class="btn btn--small btn--green">
+                        BOOK LAB
+                    </a>
                 </div>
             </div>
-            <div class="location-card">
+
+            <!-- Location 5: Girona Peloton Base -->
+            <div class="location-card" data-branch-id="5">
                 <div class="location-info">
                     <h3 class="location-name">GIRONA PELOTON BASE</h3>
                     <p class="location-address">
@@ -84,10 +126,18 @@
                     </p>
                 </div>
                 <div class="location-actions">
-                    <a href="#directions" class="btn btn--small btn--outline">SHOW DIRECTIONS</a>
-                    <a href="#book" class="btn btn--small btn--green">BOOK LAB</a>
+                    <a href="https://maps.app.goo.gl/QPKHvpDDAiYKseN47" 
+                       target="_blank" 
+                       class="btn btn--small btn--outline">
+                        SHOW DIRECTIONS
+                    </a>
+                    <a href="/syncro lab/pages/booking.php?branch=5" 
+                       class="btn btn--small btn--green">
+                        BOOK LAB
+                    </a>
                 </div>
             </div>
+
         </div>
     </div>
 </section>

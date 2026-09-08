@@ -9,7 +9,7 @@
                 <p class="about-text">
                     At SYNCRO LAB, we are a premier retail house that seamlessly blends elite component curation with technical bike fit and maintenance services. Driven by an obsessive dedication to mechanical precision and contemporary performance solutions, we engineer every build, tune, and overhaul to align with your exact vision. From custom frame-up assemblies to data-driven biomechanical calibrations, we approach every service with zero margin for error, ensuring maximum power transfer, optimal aerodynamics, and absolute reliability on every ride.
                 </p>
-                <a href="#learn-more" class="btn btn--green">LEARN MORE</a>
+                <a href="/syncro lab/pages/about.php" class="btn btn--green">LEARN MORE</a>
             </div>
             <div class="about-logo-wrapper">
                 <img src="assets/images/SL.svg" alt="SYNCRO LAB SL Mark" class="sl-logo-svg">

@@ -75,7 +75,7 @@
                 <div class="card-content">
                     <h3>CUSTOM BUILD</h3>
                     <p>Frame-up bespoke assembly, electronic groupsets, and custom telemetry tuning.</p>
-                    <a href="#custom-build" class="btn-explore">
+                    <a href="/syncro lab/pages/service-detail.php?service=custom_build" class="btn-explore">
                         EXPLORE SERVICE
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                             <line x1="7" y1="17" x2="17" y2="7"></line>
@@ -91,7 +91,7 @@
                 <div class="card-content">
                     <h3>REPAIR & MAINTENANCE</h3>
                     <p>Complete ultrasonic cleaning, brake bleeds, bearing check and torque calibration.</p>
-                    <a href="#repair" class="btn-explore">
+                    <a href="/syncro lab/pages/service-detail.php?service=repair_maintenance" class="btn-explore">
                         EXPLORE SERVICE
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                             <line x1="7" y1="17" x2="17" y2="7"></line>
@@ -107,7 +107,7 @@
                 <div class="card-content">
                     <h3>BIKE FIT</h3>
                     <p>Motion analysis, cockpit alignment, and power-transfer telemetry adjustments.</p>
-                    <a href="#bike-fit" class="btn-explore">
+                    <a href="/syncro lab/pages/service-detail.php?service=bike_fit" class="btn-explore">
                         EXPLORE SERVICE
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                             <line x1="7" y1="17" x2="17" y2="7"></line>
@@ -122,7 +122,7 @@
             <p class="membership-desc">
                 Get 12 months of faster service, expert support, and priority access to rare gear.
                 Members enjoy guaranteed 24-hour repair turnarounds, an annual laser bike fit, and free deep cleans.
-                <a href="#membership-details" class="membership-link">
+                <a href="/syncro lab/pages/membership-details.php" class="membership-link">
                     Learn more about member benefits
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <line x1="7" y1="17" x2="17" y2="7"></line>
@@ -130,7 +130,7 @@
                     </svg>
                 </a>
             </p>
-            <a href="#register" class="btn btn--green">REGISTER NOW</a>
+            <a href="/syncro lab/pages/register-membership.php" class="btn btn--green">REGISTER NOW</a>
         </div>
     </div>
 </section>

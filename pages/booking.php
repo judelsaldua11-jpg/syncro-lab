@@ -7,7 +7,7 @@ require_once __DIR__ . '/../inc/functions.php';
 
 // Check if user is logged in
 if (!isLoggedIn()) {
-    header('Location: auth/login.php?error=Please log in to book a service.');
+    header('Location: /syncro lab/pages/auth/login.php?error=Please log in to book a service.');
     exit;
 }
 
@@ -20,6 +20,12 @@ $branches = getBranches();
 // Get any error/success messages
 $error = $_GET['error'] ?? '';
 $success = $_GET['success'] ?? '';
+
+// Pre-select branch if coming from locations page
+$preselectedBranch = isset($_GET['branch']) ? (int)$_GET['branch'] : 0;
+
+// Pre-select service if coming from service detail page
+$preselectedService = isset($_GET['service']) ? $_GET['service'] : '';
 
 include __DIR__ . '/../src/Views/layouts/header.php';
 ?>
@@ -45,7 +51,7 @@ include __DIR__ . '/../src/Views/layouts/header.php';
             </div>
         <?php endif; ?>
 
-        <form method="POST" action="booking-handler.php" style="background: #fff; padding: 32px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow);">
+        <form method="POST" action="/syncro lab/pages/booking-handler.php" style="background: #fff; padding: 32px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow);">
             
             <div style="display: grid; gap: 20px;">
                 
@@ -55,7 +61,7 @@ include __DIR__ . '/../src/Views/layouts/header.php';
                             style="width: 100%; padding: 12px; border: 2px solid var(--gray); border-radius: var(--radius); font-size: 16px; background: #fff;">
                         <option value="">-- Select Branch --</option>
                         <?php foreach ($branches as $branch): ?>
-                            <option value="<?= $branch['id'] ?>">
+                            <option value="<?= $branch['id'] ?>" <?= $preselectedBranch == $branch['id'] ? 'selected' : '' ?>>
                                 <?= htmlspecialchars($branch['name']) ?>
                             </option>
                         <?php endforeach; ?>
@@ -67,9 +73,9 @@ include __DIR__ . '/../src/Views/layouts/header.php';
                     <select id="service_type" name="service_type" required
                             style="width: 100%; padding: 12px; border: 2px solid var(--gray); border-radius: var(--radius); font-size: 16px; background: #fff;">
                         <option value="">-- Select Service --</option>
-                        <option value="custom_build">Custom Build</option>
-                        <option value="repair_maintenance">Repair & Maintenance</option>
-                        <option value="bike_fit">Bike Fit</option>
+                        <option value="custom_build" <?= $preselectedService === 'custom_build' ? 'selected' : '' ?>>Custom Build</option>
+                        <option value="repair_maintenance" <?= $preselectedService === 'repair_maintenance' ? 'selected' : '' ?>>Repair & Maintenance</option>
+                        <option value="bike_fit" <?= $preselectedService === 'bike_fit' ? 'selected' : '' ?>>Bike Fit</option>
                     </select>
                 </div>
 
@@ -90,7 +96,7 @@ include __DIR__ . '/../src/Views/layouts/header.php';
                     <button type="submit" class="btn btn--green" style="height: 48px; font-size: 16px; padding: 0 32px;">
                         SUBMIT BOOKING
                     </button>
-                    <a href="../index.php" class="btn btn--outline" style="height: 48px; font-size: 16px; padding: 0 32px;">
+                    <a href="/syncro lab/index.php" class="btn btn--outline" style="height: 48px; font-size: 16px; padding: 0 32px;">
                         CANCEL
                     </a>
                 </div>
