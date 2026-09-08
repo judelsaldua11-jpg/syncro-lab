@@ -140,6 +140,10 @@ include __DIR__ . '/../../src/Views/layouts/header.php';
                     <h3 style="font-family: var(--font-heading); font-size: 20px; color: var(--dark);">💬 Chat</h3>
                     <p style="color: var(--gray-dark); font-size: 14px; margin-top: 8px;">Respond to customer inquiries</p>
                 </a>
+                <a href="locations.php" style="text-decoration: none; background: #fff; padding: 24px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.2s ease;">
+                    <h3 style="font-family: var(--font-heading); font-size: 20px; color: var(--dark);">📍 Locations</h3>
+                    <p style="color: var(--gray-dark); font-size: 14px; margin-top: 8px;">Manage lab branches</p>
+                </a>
             </div>
 
             <!-- Additional Stats -->

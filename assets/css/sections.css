@@ -563,3 +563,125 @@
 .cart-page-back {
     margin-top: 28px;
 }
+
+/* ============================================================
+   RESPONSIVE SEARCH BAR (Locations)
+   ============================================================ */
+
+/* ----- Search Bar (Default) ----- */
+.search-bar {
+    height: 64px;
+    background-color: var(--light);
+    border: 2px solid var(--dark);
+    border-radius: var(--radius);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    margin-bottom: 24px;
+    gap: 16px;
+}
+
+.search-input {
+    flex: 1;
+    height: 100%;
+    background: transparent;
+    border: none;
+    outline: none;
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--gray);
+    text-transform: uppercase;
+    min-width: 0;
+}
+
+.search-input::placeholder {
+    color: var(--gray);
+}
+
+.search-icons {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-shrink: 0;
+}
+
+.search-icons svg {
+    width: 28px;
+    height: 28px;
+    cursor: pointer;
+    stroke: var(--gray);
+    transition: stroke 0.2s ease;
+}
+
+.search-icons svg:hover {
+    stroke: var(--dark);
+}
+
+/* ----- Tablet (768px) ----- */
+@media (max-width: 768px) {
+    .search-bar {
+        height: 56px;
+        padding: 0 16px;
+        gap: 12px;
+    }
+    
+    .search-input {
+        font-size: 16px;
+    }
+    
+    .search-icons {
+        gap: 14px;
+    }
+    
+    .search-icons svg {
+        width: 24px;
+        height: 24px;
+    }
+}
+
+/* ----- Mobile (480px) ----- */
+@media (max-width: 480px) {
+    .search-bar {
+        height: 48px;
+        padding: 0 12px;
+        gap: 10px;
+    }
+    
+    .search-input {
+        font-size: 13px;
+        font-weight: 700;
+    }
+    
+    .search-icons {
+        gap: 10px;
+    }
+    
+    .search-icons svg {
+        width: 20px;
+        height: 20px;
+    }
+}
+
+/* ----- Location Card (Mobile) ----- */
+@media (max-width: 768px) {
+    .location-card {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 16px;
+        padding: 16px 20px;
+    }
+    
+    .location-actions {
+        width: 100%;
+        display: flex;
+        gap: 12px;
+    }
+    
+    .location-actions .btn {
+        flex: 1;
+        justify-content: center;
+        height: 40px;
+        font-size: 14px;
+    }
+}

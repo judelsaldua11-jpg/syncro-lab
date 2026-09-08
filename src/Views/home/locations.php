@@ -38,7 +38,7 @@
                     </p>
                 </div>
                 <div class="location-actions">
-                    <a href="https://maps.app.goo.gl/xYTAQcm2TJYEF1FX9" 
+                    <a href="https://www.google.com/maps/search/?api=1&query=9.3167+123.3167" 
                        target="_blank" 
                        class="btn btn--small btn--outline">
                         SHOW DIRECTIONS
@@ -60,7 +60,7 @@
                     </p>
                 </div>
                 <div class="location-actions">
-                    <a href="https://maps.app.goo.gl/7mPcC7Qheejxka6NA" 
+                    <a href="https://www.google.com/maps/search/?api=1&query=9.3056+123.3125" 
                        target="_blank" 
                        class="btn btn--small btn--outline">
                         SHOW DIRECTIONS
@@ -82,7 +82,7 @@
                     </p>
                 </div>
                 <div class="location-actions">
-                    <a href="https://maps.app.goo.gl/o97zip83keZY3f567" 
+                    <a href="https://www.google.com/maps/search/?api=1&query=14.6035+121.0371" 
                        target="_blank" 
                        class="btn btn--small btn--outline">
                         SHOW DIRECTIONS
@@ -104,7 +104,7 @@
                     </p>
                 </div>
                 <div class="location-actions">
-                    <a href="https://maps.app.goo.gl/sByxcaWK2ZV5tUGB9" 
+                    <a href="https://www.google.com/maps/search/?api=1&query=14.2667+121.1000" 
                        target="_blank" 
                        class="btn btn--small btn--outline">
                         SHOW DIRECTIONS
@@ -126,7 +126,7 @@
                     </p>
                 </div>
                 <div class="location-actions">
-                    <a href="https://maps.app.goo.gl/QPKHvpDDAiYKseN47" 
+                    <a href="https://www.google.com/maps/search/?api=1&query=41.9831+2.8244" 
                        target="_blank" 
                        class="btn btn--small btn--outline">
                         SHOW DIRECTIONS
