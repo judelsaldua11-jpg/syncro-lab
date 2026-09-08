@@ -132,6 +132,14 @@ include __DIR__ . '/../../src/Views/layouts/header.php';
                     <h3 style="font-family: var(--font-heading); font-size: 20px; color: var(--dark);">📅 Bookings</h3>
                     <p style="color: var(--gray-dark); font-size: 14px; margin-top: 8px;">Manage customer service appointments</p>
                 </a>
+                <a href="warranty.php" style="text-decoration: none; background: #fff; padding: 24px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.2s ease;">
+                    <h3 style="font-family: var(--font-heading); font-size: 20px; color: var(--dark);">🛡️ Warranty</h3>
+                    <p style="color: var(--gray-dark); font-size: 14px; margin-top: 8px;">Manage warranty claims</p>
+                </a>
+                <a href="../chat.php" style="text-decoration: none; background: #fff; padding: 24px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.2s ease;">
+                    <h3 style="font-family: var(--font-heading); font-size: 20px; color: var(--dark);">💬 Chat</h3>
+                    <p style="color: var(--gray-dark); font-size: 14px; margin-top: 8px;">Respond to customer inquiries</p>
+                </a>
             </div>
 
             <!-- Additional Stats -->
@@ -197,6 +205,14 @@ include __DIR__ . '/../../src/Views/layouts/header.php';
                 <a href="bookings.php" style="text-decoration: none; background: #fff; padding: 24px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.2s ease;">
                     <h3 style="font-family: var(--font-heading); font-size: 20px; color: var(--dark);">📅 Bookings</h3>
                     <p style="color: var(--gray-dark); font-size: 14px; margin-top: 8px;">Manage customer service appointments</p>
+                </a>
+                <a href="warranty.php" style="text-decoration: none; background: #fff; padding: 24px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.2s ease;">
+                    <h3 style="font-family: var(--font-heading); font-size: 20px; color: var(--dark);">🛡️ Warranty</h3>
+                    <p style="color: var(--gray-dark); font-size: 14px; margin-top: 8px;">Manage warranty claims</p>
+                </a>
+                <a href="../chat.php" style="text-decoration: none; background: #fff; padding: 24px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.2s ease;">
+                    <h3 style="font-family: var(--font-heading); font-size: 20px; color: var(--dark);">💬 Chat</h3>
+                    <p style="color: var(--gray-dark); font-size: 14px; margin-top: 8px;">Respond to customer inquiries</p>
                 </a>
             </div>
 

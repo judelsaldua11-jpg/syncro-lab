@@ -2,34 +2,42 @@
 
 document.addEventListener('DOMContentLoaded', () => {
     /* -------------------------------------------------------------------------- AUTHENTICATION MODAL ----------------------------------------------------------------------- */
-    const authModal = document.querySelector('#auth-modal');
-    const authCloseButtons = document.querySelectorAll('[data-auth-close]');
+const authDrawer = document.querySelector('#auth-drawer');
+const authCloseButtons = document.querySelectorAll('[data-auth-close]');
 
-    function setAuthOpen(isOpen) {
-        document.body.classList.toggle('auth-open', isOpen);
-        authModal?.setAttribute('aria-hidden', String(!isOpen));
+function setAuthOpen(isOpen) {
+    document.body.classList.toggle('auth-open', isOpen);
+    authDrawer?.setAttribute('aria-hidden', String(!isOpen));
+}
+
+// Intercept clicks on auth triggers
+document.addEventListener('click', (event) => {
+    const trigger = event.target.closest('[data-auth-trigger]');
+    const link = event.target.closest('a[href]');
+
+    if (trigger) {
+        event.preventDefault();
+        setAuthOpen(true);
+        return;
     }
 
-    // Intercept clicks on auth triggers or specific action anchors
-    document.addEventListener('click', (event) => {
-        const trigger = event.target.closest('[data-auth-trigger]');
-        const link = event.target.closest('a[href]');
+    if (link && ['#book', '#register', '#account'].includes(link.getAttribute('href'))) {
+        event.preventDefault();
+        setAuthOpen(true);
+    }
+});
 
-        if (trigger) {
-            event.preventDefault();
-            setAuthOpen(true);
-            return;
-        }
+authCloseButtons.forEach((button) => {
+    button.addEventListener('click', () => setAuthOpen(false));
+});
 
-        if (link && ['#book', '#register', '#account'].includes(link.getAttribute('href'))) {
-            event.preventDefault();
-            setAuthOpen(true);
-        }
-    });
-
-    authCloseButtons.forEach((button) => {
-        button.addEventListener('click', () => setAuthOpen(false));
-    });
+// ESC key handler (already exists for cart drawer)
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+        setAuthOpen(false);
+        setCartOpen(false);
+    }
+});
 
     /* -------------------------------------------------------------------------- SHOPPING CART DRAWER ----------------------------------------------------------------------- */
     const cartButton = document.querySelector('.cart-btn');

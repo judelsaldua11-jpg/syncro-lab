@@ -78,45 +78,69 @@ $userRole = $isLoggedIn ? ($_SESSION['role'] ?? 'customer') : '';
     </div>
 </footer>
 
-<!-- Auth Modal -->
-<div id="auth-modal" class="auth-modal" aria-hidden="true">
-    <div class="auth-modal-backdrop" data-auth-close></div>
-    <section class="auth-modal-panel" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title">
-        <button type="button" class="auth-modal-close" data-auth-close aria-label="Close account prompt">&times;</button>
-        
+<!-- Auth Drawer (Side Drawer) -->
+<div class="auth-drawer-backdrop" data-auth-close></div>
+<aside id="auth-drawer" class="auth-drawer" aria-label="Account" aria-hidden="true">
+    <div class="auth-drawer-header">
+        <div>
+            <?php if ($isLoggedIn): ?>
+                <p class="auth-drawer-eyebrow">WELCOME BACK</p>
+                <h2><?= htmlspecialchars($userName) ?></h2>
+                <p style="color: var(--gray-dark); font-size: 14px; margin-top: 4px;">
+                    <?php
+                    $roleLabels = [
+                        'customer' => 'Customer',
+                        'branch_manager' => 'Branch Manager',
+                        'hq_admin' => 'HQ Admin'
+                    ];
+                    echo $roleLabels[$userRole] ?? 'User';
+                    ?>
+                </p>
+            <?php else: ?>
+                <p class="auth-drawer-eyebrow">SYNCRO LAB ACCOUNT</p>
+                <h2>ACCOUNT REQUIRED</h2>
+            <?php endif; ?>
+        </div>
+        <button type="button" class="auth-drawer-close" data-auth-close aria-label="Close account drawer">&times;</button>
+    </div>
+    <div class="auth-drawer-body">
         <?php if ($isLoggedIn): ?>
-            <!-- LOGGED IN: Show User Info -->
-            <p class="auth-modal-eyebrow">WELCOME BACK</p>
-            <h2 id="auth-modal-title"><?= htmlspecialchars($userName) ?></h2>
-            <p style="color: var(--gray-dark); margin-top: 8px; font-size: 14px;">
-                <?php
-                $roleLabels = [
-                    'customer' => 'Customer',
-                    'branch_manager' => 'Branch Manager',
-                    'hq_admin' => 'HQ Admin'
-                ];
-                echo $roleLabels[$userRole] ?? 'User';
-                ?>
-            </p>
-            <div class="auth-modal-actions" style="flex-direction: column; gap: 8px; margin-top: 24px;">
-                <a href="pages/profile.php" class="btn btn--green" style="width: 100%; justify-content: center;">MY PROFILE</a>
+            <!-- LOGGED IN: User Actions -->
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                <a href="/syncro lab/pages/profile.php" class="btn btn--green" style="width: 100%; justify-content: center;">
+                    👤 MY PROFILE
+                </a>
+                <a href="/syncro lab/pages/orders.php" class="btn btn--outline" style="width: 100%; justify-content: center;">
+                    📦 MY ORDERS
+                </a>
+                <a href="/syncro lab/pages/chat.php" class="btn btn--outline" style="width: 100%; justify-content: center;">
+                    💬 CHAT
+                </a>
                 <?php if ($userRole === 'hq_admin' || $userRole === 'branch_manager'): ?>
-                    <a href="pages/admin/dashboard.php" class="btn btn--outline" style="width: 100%; justify-content: center;">DASHBOARD</a>
+                    <a href="/syncro lab/pages/admin/dashboard.php" class="btn btn--outline" style="width: 100%; justify-content: center;">
+                        📊 DASHBOARD
+                    </a>
                 <?php endif; ?>
-                <a href="pages/auth/logout.php" class="btn btn--dark" style="width: 100%; justify-content: center; border-color: var(--dark);">LOGOUT</a>
             </div>
+
+            <!-- Divider -->
+            <div style="margin: 20px 0; border-top: 1px solid var(--gray);"></div>
+
+            <!-- Logout -->
+            <a href="/syncro lab/pages/auth/logout.php" class="btn btn--dark" style="width: 100%; justify-content: center; border-color: var(--dark);">
+                🚪 LOGOUT
+            </a>
+
         <?php else: ?>
-            <!-- LOGGED OUT: Show Login/Signup -->
-            <p class="auth-modal-eyebrow">SYNCRO LAB ACCOUNT</p>
-            <h2 id="auth-modal-title">ACCOUNT REQUIRED</h2>
-            <p class="auth-modal-copy">Log in or create an account to book a service, register, or continue with your cart.</p>
-            <div class="auth-modal-actions">
-                <a class="btn btn--green" href="pages/auth/login.php" style="flex: 1; justify-content: center;">LOG IN</a>
-                <a class="btn btn--outline" href="pages/auth/register.php" style="flex: 1; justify-content: center;">SIGN UP</a>
-            </div>
+            <!-- LOGGED OUT: Login / Signup -->
+            <p style="color: var(--gray-dark); margin-bottom: 24px; line-height: 1.5;">
+                Log in or create an account to book a service, register, or continue with your cart.
+            </p>
+            <a href="/syncro lab/pages/auth/login.php" class="btn btn--green" style="width: 100%; justify-content: center;">LOG IN</a>
+            <a href="/syncro lab/pages/auth/register.php" class="btn btn--outline" style="width: 100%; justify-content: center; margin-top: 8px;">SIGN UP</a>
         <?php endif; ?>
-    </section>
-</div>
+    </div>
+</aside>
 
 <script src="/syncro lab/assets/js/main.js"></script>
 </body>
