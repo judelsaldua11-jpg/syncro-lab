@@ -161,6 +161,18 @@ function getOrderStatusLabel($status) {
     return $labels[$status] ?? ucfirst($status);
 }
 
+function getOrderStatusColor($status) {  // ← ADDED (was missing)
+    $colors = [
+        'pending' => '#f0ad4e',    // yellow
+        'confirmed' => '#5bc0de',   // blue
+        'shipped' => '#0275d8',     // dark blue
+        'delivered' => '#5cb85c',   // green
+        'cancelled' => '#d9534f',   // red
+        'returned' => '#777777'     // gray
+    ];
+    return $colors[$status] ?? '#777777';
+}
+
 // ============================================
 // CART FUNCTIONS
 // ============================================
@@ -275,44 +287,6 @@ function clearCart($pdo, $cartId) {
     return true;
 }
 
-// ============================================
-// BRANCH FUNCTIONS (Nearest Branch)
-// ============================================
-
-function getNearestBranchWithStock($pdo, $productIds, $userLat, $userLng) {
-    // Build placeholders for product IDs
-    $placeholders = implode(',', array_fill(0, count($productIds), '?'));
-    
-    $sql = "
-        SELECT 
-            b.id AS branch_id,
-            b.name AS branch_name,
-            b.address,
-            b.latitude,
-            b.longitude,
-            (6371 * acos(
-                cos(radians(?)) * cos(radians(b.latitude)) * 
-                cos(radians(b.longitude) - radians(?)) + 
-                sin(radians(?)) * sin(radians(b.latitude))
-            )) AS distance,
-            COUNT(DISTINCT i.product_id) AS products_in_stock
-        FROM branches b
-        JOIN inventory i ON b.id = i.branch_id
-        WHERE i.product_id IN ($placeholders)
-            AND i.status = 'in_stock'
-            AND b.is_active = 1
-        GROUP BY b.id
-        HAVING products_in_stock = ?
-        ORDER BY distance ASC
-        LIMIT 1
-    ";
-    
-    $params = array_merge([$userLat, $userLng, $userLat], $productIds, [count($productIds)]);
-    
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    return $stmt->fetch();
-}
 
 // ============================================
 // RESERVATION FUNCTIONS
@@ -342,4 +316,29 @@ function releaseExpiredReservations($pdo) {
     ");
     $stmt->execute();
     return $stmt->rowCount();
+}
+
+// ============================================
+// INVENTORY LOGGING
+// ============================================
+
+function logInventoryActivity($pdo, $inventoryId, $productId, $branchId, $action, $oldStatus = null, $newStatus = null, $quantity = null, $notes = null) {
+    $userId = $_SESSION['user_id'] ?? 0;
+    if ($userId <= 0) return;
+    
+    $stmt = $pdo->prepare("
+        INSERT INTO inventory_logs (inventory_id, product_id, branch_id, user_id, action, old_status, new_status, quantity, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ");
+    $stmt->execute([
+        $inventoryId ?: null,
+        $productId,
+        $branchId,
+        $userId,
+        $action,
+        $oldStatus,
+        $newStatus,
+        $quantity,
+        $notes
+    ]);
 }

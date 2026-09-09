@@ -9,6 +9,9 @@ $cartId = getOrCreateCart($pdo, $userId);
 $cartItems = getCartItems($pdo, $cartId);
 $cartTotal = getCartTotal($pdo, $cartId);
 $cartCount = getCartCount($pdo, $cartId);
+
+// Determine if we are on the homepage
+$isHomepage = (basename($_SERVER['SCRIPT_NAME']) == 'index.php');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -23,11 +26,12 @@ $cartCount = getCartCount($pdo, $cartId);
 <!-- SECTION 1: HEADER NAVIGATION -->
 <header class="site-header">
     <!-- Brand Logo -->
-    <a href="#home" class="brand-logo">
+    <a href="/syncro lab/index.php" class="brand-logo">
         <img src="/syncro lab/assets/images/syncro-lab-light.svg" alt="SYNCRO LAB Logo" class="logo-img">
     </a>
 
-    <!-- Navigation Links -->
+    <!-- Navigation Links (only on homepage) -->
+    <?php if ($isHomepage): ?>
     <nav class="main-nav">
         <ul>
             <li><a href="#home" class="nav-link active">HOME</a></li>
@@ -36,14 +40,16 @@ $cartCount = getCartCount($pdo, $cartId);
             <li><a href="#about" class="nav-link">ABOUT</a></li>
             <li><a href="#locations" class="nav-link">LOCATIONS</a></li>
             <li class="nav-search-item">
-                <button id="search-btn" class="icon-btn nav-search-btn" aria-label="Search">
+                <!-- Search Icon (links to shop page) -->
+                <a href="/syncro lab/pages/shop.php" class="icon-btn nav-search-btn" aria-label="Search">
                     <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M35 35L27.75 27.75M31.6667 18.3333C31.6667 25.6971 25.6971 31.6667 18.3333 31.6667C10.9695 31.6667 5 25.6971 5 18.3333C5 10.9695 10.9695 5 18.3333 5C25.6971 5 31.6667 10.9695 31.6667 18.3333Z" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
-                </button>
+                </a>
             </li>
         </ul>
     </nav>
+    <?php endif; ?>
 
     <!-- Header Right Actions -->
     <div class="header-actions">

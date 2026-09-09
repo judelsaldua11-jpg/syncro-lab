@@ -38,10 +38,26 @@ function validatePhone(string $value): ?string
 
 function validatePassword(string $value): ?string
 {
+    $errors = [];
+
     if (strlen($value) < 8) {
-        return "Password must be at least 8 characters long.";
+        $errors[] = "at least 8 characters";
     }
-    return null;
+    if (!preg_match('/[A-Z]/', $value)) {
+        $errors[] = "at least one uppercase letter";
+    }
+    if (!preg_match('/[0-9]/', $value)) {
+        $errors[] = "at least one number";
+    }
+    if (!preg_match('/[\W_]/', $value)) {
+        $errors[] = "at least one special character";
+    }
+
+    if (empty($errors)) {
+        return null; // password meets all requirements
+    }
+
+    return "Password must contain " . implode(', ', $errors) . ".";
 }
 
 function validateConfirmPassword(string $password, string $confirm): ?string

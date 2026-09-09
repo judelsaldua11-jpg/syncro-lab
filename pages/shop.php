@@ -7,12 +7,23 @@ require_once __DIR__ . '/../inc/functions.php';
 
 // Get search query
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
-$category = isset($_GET['category']) ? (int)$_GET['category'] : 0;
+$categorySlug = isset($_GET['category']) ? trim($_GET['category']) : '';
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $limit = 12;
 $offset = ($page - 1) * $limit;
 
 $pdo = getConnection();
+
+// Convert category slug to ID
+$categoryId = 0;
+if (!empty($categorySlug)) {
+    $stmt = $pdo->prepare("SELECT id FROM categories WHERE slug = ? AND is_active = 1");
+    $stmt->execute([$categorySlug]);
+    $cat = $stmt->fetch();
+    if ($cat) {
+        $categoryId = $cat['id'];
+    }
+}
 
 // Build the query
 $sql = "SELECT p.*, 
@@ -31,11 +42,11 @@ if (!empty($search)) {
     $params[':search'] = "%$search%";
 }
 
-// Add category filter
-if ($category > 0) {
+// Add category filter (using ID from slug)
+if ($categoryId > 0) {
     $sql .= " AND EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id = :category)";
     $countSql .= " AND EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id = :category)";
-    $params[':category'] = $category;
+    $params[':category'] = $categoryId;
 }
 
 // Add sorting and pagination
@@ -67,7 +78,7 @@ $stmt->execute();
 $products = $stmt->fetchAll();
 
 // Get all categories for filter dropdown
-$stmt = $pdo->query("SELECT id, name FROM categories WHERE is_active = 1 ORDER BY name");
+$stmt = $pdo->query("SELECT id, name, slug FROM categories WHERE is_active = 1 ORDER BY name");
 $categories = $stmt->fetchAll();
 
 include __DIR__ . '/../src/Views/layouts/header.php';
@@ -94,15 +105,15 @@ include __DIR__ . '/../src/Views/layouts/header.php';
             </form>
             <form method="GET" action="" style="display: flex; gap: 12px;">
                 <select name="category" style="height: 48px; padding: 0 16px; border: 2px solid var(--gray); border-radius: var(--radius); font-size: 16px; background: #fff;">
-                    <option value="0">All Categories</option>
+                    <option value="">All Categories</option>
                     <?php foreach ($categories as $cat): ?>
-                        <option value="<?= $cat['id'] ?>" <?= $category == $cat['id'] ? 'selected' : '' ?>>
+                        <option value="<?= $cat['slug'] ?>" <?= $categorySlug == $cat['slug'] ? 'selected' : '' ?>>
                             <?= htmlspecialchars($cat['name']) ?>
                         </option>
                     <?php endforeach; ?>
                 </select>
                 <button type="submit" class="btn btn--outline" style="height: 48px; font-size: 16px; padding: 0 20px;">FILTER</button>
-                <?php if (!empty($search) || $category > 0): ?>
+                <?php if (!empty($search) || !empty($categorySlug)): ?>
                     <a href="shop.php" class="btn btn--dark" style="height: 48px; font-size: 16px; padding: 0 20px;">CLEAR</a>
                 <?php endif; ?>
             </form>
@@ -169,7 +180,7 @@ include __DIR__ . '/../src/Views/layouts/header.php';
             <?php if ($totalPages > 1): ?>
                 <div style="display: flex; justify-content: center; gap: 8px; margin-top: 40px;">
                     <?php for ($i = 1; $i <= $totalPages; $i++): ?>
-                        <a href="?page=<?= $i ?>&search=<?= urlencode($search) ?>&category=<?= $category ?>" 
+                        <a href="?page=<?= $i ?>&search=<?= urlencode($search) ?>&category=<?= urlencode($categorySlug) ?>" 
                            style="display: inline-block; padding: 8px 16px; border-radius: var(--radius); background: <?= $i == $page ? 'var(--green)' : 'var(--gray)' ?>; color: <?= $i == $page ? 'var(--dark)' : '#fff' ?>; text-decoration: none; font-weight: 700;">
                             <?= $i ?>
                         </a>

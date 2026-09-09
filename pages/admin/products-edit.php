@@ -39,6 +39,11 @@ $productCategories = $stmt->fetchAll(PDO::FETCH_COLUMN);
 $stmt = $pdo->query("SELECT id, name FROM categories WHERE is_active = 1 ORDER BY name");
 $categories = $stmt->fetchAll();
 
+// Get existing product images
+$stmt = $pdo->prepare("SELECT * FROM product_images WHERE product_id = ? ORDER BY sort_order ASC, id ASC");
+$stmt->execute([$productId]);
+$productImages = $stmt->fetchAll();
+
 $error = '';
 $success = '';
 
@@ -51,6 +56,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $description = trim($_POST['description'] ?? '');
     $categoryIds = $_POST['categories'] ?? [];
     $isFeatured = isset($_POST['is_featured']) ? 1 : 0;
+
+    // Collect image management data
+    $deleteImageIds = isset($_POST['delete_images']) ? array_map('intval', $_POST['delete_images']) : [];
+    $primaryImageId = isset($_POST['primary_image']) ? (int)$_POST['primary_image'] : 0;
 
     if (empty($name) || empty($sku) || empty($price)) {
         $error = 'Product name, SKU, and price are required.';
@@ -79,8 +88,125 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            $pdo->commit();
-            $success = "Product updated successfully!";
+            // ============================================
+            // IMAGE MANAGEMENT
+            // ============================================
+
+            // 1. Delete selected images
+            if (!empty($deleteImageIds)) {
+                $placeholders = implode(',', array_fill(0, count($deleteImageIds), '?'));
+                $stmt = $pdo->prepare("DELETE FROM product_images WHERE id IN ($placeholders) AND product_id = ?");
+                $params = array_merge($deleteImageIds, [$productId]);
+                $stmt->execute($params);
+            }
+
+            // 2. Set primary image (if specified and exists)
+            if ($primaryImageId > 0) {
+                // Reset all to 0 for this product
+                $stmt = $pdo->prepare("UPDATE product_images SET is_primary = 0 WHERE product_id = ?");
+                $stmt->execute([$productId]);
+                // Set chosen one to 1
+                $stmt = $pdo->prepare("UPDATE product_images SET is_primary = 1 WHERE id = ? AND product_id = ?");
+                $stmt->execute([$primaryImageId, $productId]);
+            } else {
+                // If no primary is set, set the first remaining image as primary
+                $stmt = $pdo->prepare("
+                    UPDATE product_images 
+                    SET is_primary = 1 
+                    WHERE product_id = ? 
+                    ORDER BY sort_order ASC, id ASC 
+                    LIMIT 1
+                ");
+                $stmt->execute([$productId]);
+            }
+
+            // 3. Upload new images (multiple)
+            $uploadErrors = [];
+            if (isset($_FILES['new_images']) && !empty($_FILES['new_images']['name'][0])) {
+                $files = $_FILES['new_images'];
+                $maxSize = 5 * 1024 * 1024; // 5MB
+                $allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+                $allowedExts = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+
+                // Get current max sort_order
+                $stmt = $pdo->prepare("SELECT COALESCE(MAX(sort_order), -1) FROM product_images WHERE product_id = ?");
+                $stmt->execute([$productId]);
+                $maxSort = (int)$stmt->fetchColumn();
+
+                for ($i = 0; $i < count($files['name']); $i++) {
+                    if ($files['error'][$i] !== UPLOAD_ERR_OK) {
+                        if ($files['error'][$i] !== UPLOAD_ERR_NO_FILE) {
+                            $uploadErrors[] = "File '{$files['name'][$i]}' upload error.";
+                        }
+                        continue;
+                    }
+
+                    $file = [
+                        'name' => $files['name'][$i],
+                        'tmp_name' => $files['tmp_name'][$i],
+                        'size' => $files['size'][$i],
+                        'error' => $files['error'][$i],
+                    ];
+
+                    // Validate size
+                    if ($file['size'] > $maxSize) {
+                        $uploadErrors[] = "File '{$file['name']}' is too large (max 5MB).";
+                        continue;
+                    }
+
+                    // Validate MIME type
+                    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+                    $mimeType = finfo_file($finfo, $file['tmp_name']);
+                    finfo_close($finfo);
+
+                    if (!in_array($mimeType, $allowedTypes)) {
+                        $uploadErrors[] = "File '{$file['name']}' has invalid type. Allowed: JPG, PNG, WebP, GIF.";
+                        continue;
+                    }
+
+                    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+                    if (!in_array($ext, $allowedExts)) {
+                        $uploadErrors[] = "File '{$file['name']}' has invalid extension.";
+                        continue;
+                    }
+
+                    // Generate unique filename
+                    $newName = uniqid('prod_') . '.' . $ext;
+                    $uploadDir = __DIR__ . '/../../assets/images/products/';
+                    if (!is_dir($uploadDir)) {
+                        mkdir($uploadDir, 0755, true);
+                    }
+                    $dest = $uploadDir . $newName;
+
+                    if (move_uploaded_file($file['tmp_name'], $dest)) {
+                        $filePath = '/assets/images/products/' . $newName;
+                        // Insert into product_images
+                        $sortOrder = ++$maxSort;
+                        $stmt = $pdo->prepare("
+                            INSERT INTO product_images (product_id, file_path, is_primary, sort_order, uploaded_at) 
+                            VALUES (?, ?, 0, ?, NOW())
+                        ");
+                        $stmt->execute([$productId, $filePath, $sortOrder]);
+                    } else {
+                        $uploadErrors[] = "Failed to move file '{$file['name']}'.";
+                    }
+                }
+            }
+
+            if (!empty($uploadErrors)) {
+                // We still commit product changes, but warn about image upload issues
+                $pdo->commit();
+                $success = "Product updated successfully, but some images failed: " . implode('; ', $uploadErrors);
+            } else {
+                $pdo->commit();
+                $success = "Product updated successfully!";
+            }
+
+            // Refresh product images after changes
+            $stmt = $pdo->prepare("SELECT * FROM product_images WHERE product_id = ? ORDER BY sort_order ASC, id ASC");
+            $stmt->execute([$productId]);
+            $productImages = $stmt->fetchAll();
+
         } catch (PDOException $e) {
             $pdo->rollBack();
             if ($e->errorInfo[1] == 1062) {
@@ -119,9 +245,10 @@ include __DIR__ . '/../../src/Views/layouts/header.php';
         <?php endif; ?>
 
         <!-- Form -->
-        <form method="POST" action="" style="background: #fff; padding: 32px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow);">
+        <form method="POST" action="" enctype="multipart/form-data" style="background: #fff; padding: 32px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow);">
             
             <div style="display: grid; gap: 20px;">
+                <!-- Basic Fields -->
                 <div>
                     <label for="name" style="font-weight: 700; display: block; margin-bottom: 4px;">Product Name *</label>
                     <input type="text" id="name" name="name" required value="<?= htmlspecialchars($product['name']) ?>"
@@ -173,6 +300,45 @@ include __DIR__ . '/../../src/Views/layouts/header.php';
                     </label>
                 </div>
 
+                <!-- ============================================ -->
+                <!-- IMAGE MANAGEMENT SECTION -->
+                <!-- ============================================ -->
+                <div style="border-top: 2px solid var(--gray); padding-top: 20px; margin-top: 10px;">
+                    <h3 style="font-family: var(--font-heading); font-size: 20px; margin-bottom: 16px;">Product Images</h3>
+
+                    <!-- Existing Images -->
+                    <?php if (!empty($productImages)): ?>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; margin-bottom: 20px;">
+                            <?php foreach ($productImages as $img): ?>
+                                <div style="border: 1px solid var(--gray); border-radius: var(--radius); padding: 8px; background: var(--light); position: relative;">
+                                    <img src="<?= htmlspecialchars($img['file_path']) ?>" alt="Product image" style="width: 100%; height: 120px; object-fit: cover; border-radius: 4px;">
+                                    <div style="margin-top: 8px; font-size: 13px;">
+                                        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                            <input type="radio" name="primary_image" value="<?= $img['id'] ?>" <?= $img['is_primary'] ? 'checked' : '' ?>>
+                                            Primary
+                                        </label>
+                                        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; color: #d32f2f;">
+                                            <input type="checkbox" name="delete_images[]" value="<?= $img['id'] ?>">
+                                            Delete
+                                        </label>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php else: ?>
+                        <p style="color: var(--gray-dark); margin-bottom: 16px;">No images uploaded yet.</p>
+                    <?php endif; ?>
+
+                    <!-- Upload New Images -->
+                    <div>
+                        <label for="new_images" style="font-weight: 700; display: block; margin-bottom: 4px;">Add New Images</label>
+                        <input type="file" id="new_images" name="new_images[]" accept="image/jpeg,image/png,image/webp,image/gif" multiple
+                               style="width: 100%; padding: 10px; border: 2px solid var(--gray); border-radius: var(--radius); font-size: 16px; background: #fff;">
+                        <p style="color: var(--gray-dark); font-size: 12px; margin-top: 4px;">Supported: JPG, PNG, WebP, GIF (max 5MB each). You can select multiple.</p>
+                    </div>
+                </div>
+
+                <!-- Submit Buttons -->
                 <div style="display: flex; gap: 16px; margin-top: 8px;">
                     <button type="submit" class="btn btn--green" style="height: 48px; font-size: 16px; padding: 0 32px;">
                         UPDATE PRODUCT

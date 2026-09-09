@@ -35,20 +35,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $error = 'Invalid status.';
     } else {
         try {
-            // If not admin, verify this inventory belongs to their branch
-            if (!$isAdmin) {
-                $stmt = $pdo->prepare("SELECT branch_id FROM inventory WHERE id = ?");
-                $stmt->execute([$inventoryId]);
-                $inv = $stmt->fetch();
-                if (!$inv || $inv['branch_id'] != $branchId) {
+            // Get the current inventory record to log changes
+            $stmt = $pdo->prepare("SELECT product_id, branch_id, status FROM inventory WHERE id = ?");
+            $stmt->execute([$inventoryId]);
+            $inv = $stmt->fetch();
+            if (!$inv) {
+                $error = 'Inventory item not found.';
+            } else {
+                // If not admin, verify this inventory belongs to their branch
+                if (!$isAdmin && $inv['branch_id'] != $branchId) {
                     $error = 'You do not have permission to update this item.';
                 }
             }
             
             if (empty($error)) {
+                $oldStatus = $inv['status'];
                 $stmt = $pdo->prepare("UPDATE inventory SET status = ? WHERE id = ?");
                 $stmt->execute([$newStatus, $inventoryId]);
                 $message = 'Inventory status updated successfully.';
+                
+                // Log the status change
+                logInventoryActivity(
+                    $pdo,
+                    $inventoryId,
+                    $inv['product_id'],
+                    $inv['branch_id'],
+                    'update_status',
+                    $oldStatus,
+                    $newStatus,
+                    null,
+                    "Status changed from $oldStatus to $newStatus"
+                );
             }
         } catch (PDOException $e) {
             $error = 'Failed to update inventory status: ' . $e->getMessage();

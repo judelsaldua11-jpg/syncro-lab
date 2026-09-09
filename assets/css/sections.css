@@ -685,3 +685,119 @@
         font-size: 14px;
     }
 }
+
+/* ============================================================
+   SEARCH & FILTER BUTTONS + DROPDOWN (Locations)
+   ============================================================ */
+
+/* Ensure search bar has relative positioning for dropdown */
+.search-bar {
+    position: relative;
+}
+
+.search-icon-btn,
+.filter-icon-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--gray);
+    transition: color 0.2s ease;
+}
+
+.search-icon-btn:hover,
+.filter-icon-btn:hover {
+    color: var(--dark);
+}
+
+.search-icon-btn svg,
+.filter-icon-btn svg {
+    width: 28px;
+    height: 28px;
+    stroke: currentColor;
+    stroke-width: 2.5;
+    fill: none;
+}
+
+/* Filter Dropdown - hidden by default */
+.filter-dropdown {
+    display: none;
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    background: var(--light);
+    border: 2px solid var(--dark);
+    border-radius: var(--radius);
+    padding: 8px;
+    min-width: 180px;
+    box-shadow: var(--shadow);
+    z-index: 100;
+}
+
+/* Dropdown open state */
+.filter-dropdown.active {
+    display: block;
+}
+
+.filter-option {
+    display: block;
+    width: 100%;
+    padding: 10px 16px;
+    border: none;
+    background: transparent;
+    color: var(--dark);
+    font-family: var(--font-heading);
+    font-size: 14px;
+    font-weight: 700;
+    text-align: left;
+    cursor: pointer;
+    border-radius: var(--radius);
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.filter-option:hover {
+    background: var(--gray);
+    color: var(--dark);
+}
+
+.filter-option.active {
+    background: var(--green);
+    color: var(--dark);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .filter-dropdown {
+        min-width: 150px;
+        top: calc(100% + 6px);
+    }
+    .filter-option {
+        font-size: 13px;
+        padding: 8px 14px;
+    }
+    .search-icon-btn svg,
+    .filter-icon-btn svg {
+        width: 24px;
+        height: 24px;
+    }
+}
+
+@media (max-width: 480px) {
+    .filter-dropdown {
+        min-width: 140px;
+        top: calc(100% + 4px);
+        padding: 6px;
+    }
+    .filter-option {
+        font-size: 12px;
+        padding: 6px 12px;
+    }
+    .search-icon-btn svg,
+    .filter-icon-btn svg {
+        width: 20px;
+        height: 20px;
+    }
+}

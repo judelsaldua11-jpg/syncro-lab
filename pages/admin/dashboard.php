@@ -144,25 +144,141 @@ include __DIR__ . '/../../src/Views/layouts/header.php';
                     <h3 style="font-family: var(--font-heading); font-size: 20px; color: var(--dark);">📍 Locations</h3>
                     <p style="color: var(--gray-dark); font-size: 14px; margin-top: 8px;">Manage lab branches</p>
                 </a>
+                <a href="categories.php" style="text-decoration: none; background: #fff; padding: 24px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.2s ease;">
+                    <h3 style="font-family: var(--font-heading); font-size: 20px; color: var(--dark);">📂 Categories</h3>
+                    <p style="color: var(--gray-dark); font-size: 14px; margin-top: 8px;">Manage product categories</p>
+                </a>
+                <a href="users.php" style="text-decoration: none; background: #fff; padding: 24px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.2s ease;">
+                    <h3 style="font-family: var(--font-heading); font-size: 20px; color: var(--dark);">👥 Users</h3>
+                    <p style="color: var(--gray-dark); font-size: 14px; margin-top: 8px;">Manage user accounts & roles</p>
+                </a>
             </div>
 
-            <!-- Additional Stats -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
-                <div style="background: #fff; padding: 24px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow);">
-                    <h3 style="font-family: var(--font-heading); font-size: 18px; margin-bottom: 16px;">👥 Users</h3>
-                    <p><strong>Customers:</strong> <?= number_format($stats['total_customers']) ?></p>
-                    <p><strong>Branch Managers:</strong> <?= number_format($stats['total_managers']) ?></p>
-                    <p><strong>Pending Orders:</strong> <?= number_format($stats['pending_orders']) ?></p>
+            <!-- ============================================ -->
+            <!-- INVENTORY ACTIVITY LOG (HQ Admin)            -->
+            <!-- ============================================ -->
+            <div style="margin-top: 40px; background: #fff; border-radius: var(--radius); border: 1px solid var(--gray); padding: 24px; box-shadow: var(--shadow);">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 16px;">
+                    <h3 style="font-family: var(--font-heading); font-size: 24px; text-transform: uppercase; margin: 0;">📋 Inventory Activity</h3>
+                    <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+                        <form method="GET" action="" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                            <input type="hidden" name="section" value="activity">
+                            <select name="filter_branch" style="height: 36px; padding: 0 12px; border: 1px solid var(--gray); border-radius: var(--radius); font-size: 14px; background: #fff;">
+                                <option value="0">All Branches</option>
+                                <?php
+                                $branches = getBranches();
+                                foreach ($branches as $b) {
+                                    $selected = (isset($_GET['filter_branch']) && $_GET['filter_branch'] == $b['id']) ? 'selected' : '';
+                                    echo "<option value='{$b['id']}' $selected>" . htmlspecialchars($b['name']) . "</option>";
+                                }
+                                ?>
+                            </select>
+                            <select name="filter_action" style="height: 36px; padding: 0 12px; border: 1px solid var(--gray); border-radius: var(--radius); font-size: 14px; background: #fff;">
+                                <option value="">All Actions</option>
+                                <option value="add" <?= (isset($_GET['filter_action']) && $_GET['filter_action'] == 'add') ? 'selected' : '' ?>>Add Stock</option>
+                                <option value="update_status" <?= (isset($_GET['filter_action']) && $_GET['filter_action'] == 'update_status') ? 'selected' : '' ?>>Status Change</option>
+                            </select>
+                            <input type="date" name="filter_date_from" value="<?= isset($_GET['filter_date_from']) ? $_GET['filter_date_from'] : '' ?>" style="height: 36px; padding: 0 8px; border: 1px solid var(--gray); border-radius: var(--radius); font-size: 14px;">
+                            <span style="color: var(--gray-dark);">to</span>
+                            <input type="date" name="filter_date_to" value="<?= isset($_GET['filter_date_to']) ? $_GET['filter_date_to'] : '' ?>" style="height: 36px; padding: 0 8px; border: 1px solid var(--gray); border-radius: var(--radius); font-size: 14px;">
+                            <button type="submit" class="btn btn--green btn--small" style="height: 36px; font-size: 14px; padding: 0 16px;">Filter</button>
+                            <a href="?section=activity" class="btn btn--outline btn--small" style="height: 36px; font-size: 14px; padding: 0 16px;">Clear</a>
+                        </form>
+                    </div>
                 </div>
-                <div style="background: #fff; padding: 24px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow);">
-                    <h3 style="font-family: var(--font-heading); font-size: 18px; margin-bottom: 16px;">⚡ Quick Actions</h3>
-                    <p style="margin-bottom: 8px;">
-                        <a href="products-add.php" style="color: var(--green); font-weight: 600;">+ Add New Product</a>
-                    </p>
-                    <p style="margin-bottom: 8px;">
-                        <a href="inventory-add.php" style="color: var(--green); font-weight: 600;">+ Add Stock</a>
-                    </p>
-                </div>
+
+                <?php
+                // Build query for activity logs
+                $filterBranch = isset($_GET['filter_branch']) ? (int)$_GET['filter_branch'] : 0;
+                $filterAction = isset($_GET['filter_action']) ? $_GET['filter_action'] : '';
+                $filterDateFrom = isset($_GET['filter_date_from']) ? $_GET['filter_date_from'] : '';
+                $filterDateTo = isset($_GET['filter_date_to']) ? $_GET['filter_date_to'] : '';
+
+                $sql = "
+                    SELECT l.*, 
+                           u.full_name AS user_name,
+                           p.name AS product_name,
+                           b.name AS branch_name
+                    FROM inventory_logs l
+                    LEFT JOIN users u ON l.user_id = u.id
+                    LEFT JOIN products p ON l.product_id = p.id
+                    LEFT JOIN branches b ON l.branch_id = b.id
+                    WHERE 1=1
+                ";
+                $params = [];
+
+                if ($filterBranch > 0) {
+                    $sql .= " AND l.branch_id = ?";
+                    $params[] = $filterBranch;
+                }
+                if (!empty($filterAction)) {
+                    $sql .= " AND l.action = ?";
+                    $params[] = $filterAction;
+                }
+                if (!empty($filterDateFrom)) {
+                    $sql .= " AND DATE(l.created_at) >= ?";
+                    $params[] = $filterDateFrom;
+                }
+                if (!empty($filterDateTo)) {
+                    $sql .= " AND DATE(l.created_at) <= ?";
+                    $params[] = $filterDateTo;
+                }
+                $sql .= " ORDER BY l.created_at DESC LIMIT 50";
+
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($params);
+                $logs = $stmt->fetchAll();
+                ?>
+
+                <?php if (empty($logs)): ?>
+                    <p style="color: var(--gray-dark); text-align: center; padding: 20px 0;">No activity found.</p>
+                <?php else: ?>
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                            <thead style="background: var(--dark); color: var(--light);">
+                                <tr>
+                                    <th style="padding: 10px 12px; text-align: left;">Date</th>
+                                    <th style="padding: 10px 12px; text-align: left;">User</th>
+                                    <th style="padding: 10px 12px; text-align: left;">Branch</th>
+                                    <th style="padding: 10px 12px; text-align: left;">Product</th>
+                                    <th style="padding: 10px 12px; text-align: left;">Action</th>
+                                    <th style="padding: 10px 12px; text-align: left;">Details</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($logs as $log): ?>
+                                    <tr style="border-bottom: 1px solid var(--gray);">
+                                        <td style="padding: 8px 12px;"><?= date('M d, Y H:i', strtotime($log['created_at'])) ?></td>
+                                        <td style="padding: 8px 12px;"><?= htmlspecialchars($log['user_name'] ?? 'Unknown') ?></td>
+                                        <td style="padding: 8px 12px;"><?= htmlspecialchars($log['branch_name'] ?? 'N/A') ?></td>
+                                        <td style="padding: 8px 12px;"><?= htmlspecialchars($log['product_name'] ?? 'Product #' . $log['product_id']) ?></td>
+                                        <td style="padding: 8px 12px;">
+                                            <?php
+                                            $actionLabels = [
+                                                'add' => '➕ Add Stock',
+                                                'update_status' => '🔄 Status Change',
+                                                'delete' => '🗑️ Delete',
+                                                'reserve' => '🔒 Reserve',
+                                                'release' => '🔓 Release'
+                                            ];
+                                            echo $actionLabels[$log['action']] ?? ucfirst($log['action']);
+                                            ?>
+                                        </td>
+                                        <td style="padding: 8px 12px;">
+                                            <?php if ($log['action'] == 'add'): ?>
+                                                Added <?= $log['quantity'] ?> item(s)
+                                            <?php elseif ($log['action'] == 'update_status'): ?>
+                                                <?= $log['old_status'] ? ucfirst(str_replace('_', ' ', $log['old_status'])) : 'N/A' ?> → <?= $log['new_status'] ? ucfirst(str_replace('_', ' ', $log['new_status'])) : 'N/A' ?>
+                                            <?php else: ?>
+                                                <?= htmlspecialchars($log['notes'] ?? '') ?>
+                                            <?php endif; ?>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endif; ?>
             </div>
 
         <?php else: ?>
@@ -175,6 +291,12 @@ include __DIR__ . '/../../src/Views/layouts/header.php';
                 </h2>
                 <p style="color: var(--gray-dark); font-size: 14px;">Your branch dashboard</p>
             </div>
+
+            <?php if (!$isAdmin && $branchId <= 0): ?>
+                <div style="background: #ffebee; color: #c62828; padding: 16px; border-radius: var(--radius); margin-bottom: 24px; border-left: 4px solid #d32f2f;">
+                    ⚠️ Your account is not assigned to a branch. Please contact HQ Admin.
+                </div>
+            <?php endif; ?>
 
             <!-- Stats Grid -->
             <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 40px;">
@@ -221,13 +343,123 @@ include __DIR__ . '/../../src/Views/layouts/header.php';
             </div>
 
             <!-- Pending Bookings -->
-            <div style="background: #fff; padding: 24px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow);">
+            <div style="background: #fff; padding: 24px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); margin-bottom: 40px;">
                 <h3 style="font-family: var(--font-heading); font-size: 18px; margin-bottom: 16px;">📅 Pending Bookings</h3>
                 <?php if ($stats['pending_bookings'] > 0): ?>
                     <p><strong><?= $stats['pending_bookings'] ?></strong> booking(s) waiting for confirmation.</p>
                     <a href="bookings.php" style="color: var(--green); font-weight: 600;">View all bookings →</a>
                 <?php else: ?>
                     <p style="color: var(--gray-dark);">No pending bookings. ✅</p>
+                <?php endif; ?>
+            </div>
+
+            <!-- ============================================ -->
+            <!-- INVENTORY ACTIVITY LOG (Branch Manager)      -->
+            <!-- ============================================ -->
+            <div style="background: #fff; border-radius: var(--radius); border: 1px solid var(--gray); padding: 24px; box-shadow: var(--shadow);">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 16px;">
+                    <h3 style="font-family: var(--font-heading); font-size: 24px; text-transform: uppercase; margin: 0;">📋 Inventory Activity</h3>
+                    <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+                        <form method="GET" action="" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                            <input type="hidden" name="section" value="activity">
+                            <select name="filter_action" style="height: 36px; padding: 0 12px; border: 1px solid var(--gray); border-radius: var(--radius); font-size: 14px; background: #fff;">
+                                <option value="">All Actions</option>
+                                <option value="add" <?= (isset($_GET['filter_action']) && $_GET['filter_action'] == 'add') ? 'selected' : '' ?>>Add Stock</option>
+                                <option value="update_status" <?= (isset($_GET['filter_action']) && $_GET['filter_action'] == 'update_status') ? 'selected' : '' ?>>Status Change</option>
+                            </select>
+                            <input type="date" name="filter_date_from" value="<?= isset($_GET['filter_date_from']) ? $_GET['filter_date_from'] : '' ?>" style="height: 36px; padding: 0 8px; border: 1px solid var(--gray); border-radius: var(--radius); font-size: 14px;">
+                            <span style="color: var(--gray-dark);">to</span>
+                            <input type="date" name="filter_date_to" value="<?= isset($_GET['filter_date_to']) ? $_GET['filter_date_to'] : '' ?>" style="height: 36px; padding: 0 8px; border: 1px solid var(--gray); border-radius: var(--radius); font-size: 14px;">
+                            <button type="submit" class="btn btn--green btn--small" style="height: 36px; font-size: 14px; padding: 0 16px;">Filter</button>
+                            <a href="?section=activity" class="btn btn--outline btn--small" style="height: 36px; font-size: 14px; padding: 0 16px;">Clear</a>
+                        </form>
+                    </div>
+                </div>
+
+                <?php
+                // Build query for branch manager – only their branch
+                $filterAction = isset($_GET['filter_action']) ? $_GET['filter_action'] : '';
+                $filterDateFrom = isset($_GET['filter_date_from']) ? $_GET['filter_date_from'] : '';
+                $filterDateTo = isset($_GET['filter_date_to']) ? $_GET['filter_date_to'] : '';
+
+                $sql = "
+                    SELECT l.*, 
+                           u.full_name AS user_name,
+                           p.name AS product_name,
+                           b.name AS branch_name
+                    FROM inventory_logs l
+                    LEFT JOIN users u ON l.user_id = u.id
+                    LEFT JOIN products p ON l.product_id = p.id
+                    LEFT JOIN branches b ON l.branch_id = b.id
+                    WHERE l.branch_id = ?
+                ";
+                $params = [$branchId];
+
+                if (!empty($filterAction)) {
+                    $sql .= " AND l.action = ?";
+                    $params[] = $filterAction;
+                }
+                if (!empty($filterDateFrom)) {
+                    $sql .= " AND DATE(l.created_at) >= ?";
+                    $params[] = $filterDateFrom;
+                }
+                if (!empty($filterDateTo)) {
+                    $sql .= " AND DATE(l.created_at) <= ?";
+                    $params[] = $filterDateTo;
+                }
+                $sql .= " ORDER BY l.created_at DESC LIMIT 50";
+
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($params);
+                $logs = $stmt->fetchAll();
+                ?>
+
+                <?php if (empty($logs)): ?>
+                    <p style="color: var(--gray-dark); text-align: center; padding: 20px 0;">No activity found.</p>
+                <?php else: ?>
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                            <thead style="background: var(--dark); color: var(--light);">
+                                <tr>
+                                    <th style="padding: 10px 12px; text-align: left;">Date</th>
+                                    <th style="padding: 10px 12px; text-align: left;">User</th>
+                                    <th style="padding: 10px 12px; text-align: left;">Product</th>
+                                    <th style="padding: 10px 12px; text-align: left;">Action</th>
+                                    <th style="padding: 10px 12px; text-align: left;">Details</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($logs as $log): ?>
+                                    <tr style="border-bottom: 1px solid var(--gray);">
+                                        <td style="padding: 8px 12px;"><?= date('M d, Y H:i', strtotime($log['created_at'])) ?></td>
+                                        <td style="padding: 8px 12px;"><?= htmlspecialchars($log['user_name'] ?? 'Unknown') ?></td>
+                                        <td style="padding: 8px 12px;"><?= htmlspecialchars($log['product_name'] ?? 'Product #' . $log['product_id']) ?></td>
+                                        <td style="padding: 8px 12px;">
+                                            <?php
+                                            $actionLabels = [
+                                                'add' => '➕ Add Stock',
+                                                'update_status' => '🔄 Status Change',
+                                                'delete' => '🗑️ Delete',
+                                                'reserve' => '🔒 Reserve',
+                                                'release' => '🔓 Release'
+                                            ];
+                                            echo $actionLabels[$log['action']] ?? ucfirst($log['action']);
+                                            ?>
+                                        </td>
+                                        <td style="padding: 8px 12px;">
+                                            <?php if ($log['action'] == 'add'): ?>
+                                                Added <?= $log['quantity'] ?> item(s)
+                                            <?php elseif ($log['action'] == 'update_status'): ?>
+                                                <?= $log['old_status'] ? ucfirst(str_replace('_', ' ', $log['old_status'])) : 'N/A' ?> → <?= $log['new_status'] ? ucfirst(str_replace('_', ' ', $log['new_status'])) : 'N/A' ?>
+                                            <?php else: ?>
+                                                <?= htmlspecialchars($log['notes'] ?? '') ?>
+                                            <?php endif; ?>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
                 <?php endif; ?>
             </div>
 

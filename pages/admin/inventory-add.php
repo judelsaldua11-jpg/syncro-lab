@@ -20,6 +20,12 @@ if ($role !== 'hq_admin' && $role !== 'branch_manager') {
 $isAdmin = ($role === 'hq_admin');
 $managerBranchId = $_SESSION['branch_id'] ?? 0;
 
+// If branch manager has no branch assigned, redirect with error
+if (!$isAdmin && $managerBranchId <= 0) {
+    header('Location: ../dashboard.php?error=Your account is not assigned to any branch. Please contact HQ Admin.');
+    exit;
+}
+
 $message = '';
 $error = '';
 $pdo = getConnection();
@@ -63,6 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $serials = array_filter($serials);
         
         if (empty($serials)) {
+            // FIXED: Removed extra closing parenthesis
             $error = 'Please enter valid serial numbers.';
         } else {
             $addedCount = 0;
@@ -92,6 +99,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (!empty($failedSerials)) {
                         $error = "Failed to add: " . implode(', ', $failedSerials);
                     }
+                    
+                    // Log the bulk add (ensure this function exists)
+                    if (function_exists('logInventoryActivity')) {
+                        logInventoryActivity(
+                            $pdo,
+                            null,
+                            $productId,
+                            $branchId,
+                            'add',
+                            null,
+                            'in_stock',
+                            $addedCount,
+                            "Added $addedCount item(s)."
+                        );
+                    }
                 } else {
                     $error = "Failed to add any items. " . implode(', ', $failedSerials);
                 }
@@ -116,7 +138,6 @@ include __DIR__ . '/../../src/Views/layouts/header.php';
             Add new items to your inventory by entering serial numbers.
         </p>
 
-        <!-- Messages -->
         <?php if ($message): ?>
             <div style="background: #e8f5e9; color: #2e7d32; padding: 16px; border-radius: var(--radius); margin-bottom: 24px; border-left: 4px solid var(--green);">
                 <?= htmlspecialchars($message) ?>
@@ -128,7 +149,6 @@ include __DIR__ . '/../../src/Views/layouts/header.php';
             </div>
         <?php endif; ?>
 
-        <!-- Form -->
         <form method="POST" action="" style="background: #fff; padding: 32px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow);">
             
             <div style="display: grid; gap: 20px;">

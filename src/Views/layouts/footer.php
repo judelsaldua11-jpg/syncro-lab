@@ -12,6 +12,7 @@ $userRole = $isLoggedIn ? ($_SESSION['role'] ?? 'customer') : '';
 <footer class="site-footer" aria-label="Site Footer">
     <div class="footer-container">
         <div class="footer-content">
+            <!-- Column 1: Brand -->
             <div class="footer-brand-col">
                 <div class="footer-logo">
                     <img src="/syncro lab/assets/images/syncro-lab-dark.svg" alt="SYNCRO LAB Logo" class="footer-logo-img">
@@ -22,60 +23,68 @@ $userRole = $isLoggedIn ? ($_SESSION['role'] ?? 'customer') : '';
                 </p>
                 <a href="mailto:contact@syncrolab.com" class="footer-email">contact@syncrolab.com</a>
             </div>
+
+            <!-- Column 2: SHOP (Category Filters) -->
             <div class="footer-links-col">
                 <h4 class="footer-column-title">SHOP</h4>
                 <ul class="footer-links">
-                    <li><a href="#bikes">Bikes</a></li>
-                    <li><a href="#components">Components</a></li>
-                    <li><a href="#wheels">Wheels</a></li>
-                    <li><a href="#apparel">Apparel</a></li>
-                    <li><a href="#frames">Bike frames</a></li>
+                    <li><a href="/syncro lab/pages/shop.php?category=bikes">Bikes</a></li>
+                    <li><a href="/syncro lab/pages/shop.php?category=components">Components</a></li>
+                    <li><a href="/syncro lab/pages/shop.php?category=wheels">Wheels</a></li>
+                    <li><a href="/syncro lab/pages/shop.php?category=apparel">Apparel</a></li>
+                    <li><a href="/syncro lab/pages/shop.php?category=frames">Bike frames</a></li>
                 </ul>
             </div>
+
+            <!-- Column 3: SERVICES -->
             <div class="footer-links-col">
                 <h4 class="footer-column-title">SERVICES</h4>
                 <ul class="footer-links">
-                    <li><a href="#tune-ups">Tune-ups</a></li>
-                    <li><a href="#custom-builds">Custom Builds</a></li>
-                    <li><a href="#diagnostics">Diagnostics</a></li>
-                    <li><a href="#warranty">Warranty</a></li>
-                    <li><a href="#faqs">FAQs</a></li>
+                    <li><a href="/syncro lab/pages/booking.php?service=repair_maintenance">Tune-ups</a></li>
+                    <li><a href="/syncro lab/pages/service-detail.php?service=custom_build">Custom Builds</a></li>
+                    <li><a href="/syncro lab/pages/booking.php?service=repair_maintenance">Diagnostics</a></li>
+                    <li><a href="/syncro lab/pages/warranty.php">Warranty</a></li>
+                    <li><a href="/syncro lab/pages/about.php">FAQs</a></li>
                 </ul>
             </div>
+
+            <!-- Column 4: SOCIALS -->
             <div class="footer-links-col">
                 <h4 class="footer-column-title">SOCIALS</h4>
                 <ul class="footer-social-links">
                     <li>
-                        <a href="#instagram">
+                        <a href="https://www.instagram.com/" target="_blank" rel="noopener noreferrer">
                             <svg class="social-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line></svg>
                             <span>Instagram</span>
                         </a>
                     </li>
                     <li>
-                        <a href="#youtube">
+                        <a href="https://www.youtube.com/" target="_blank" rel="noopener noreferrer">
                             <svg class="social-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z"></path><polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"></polygon></svg>
                             <span>YouTube</span>
                         </a>
                     </li>
                     <li>
-                        <a href="#strava">
+                        <a href="https://www.strava.com/" target="_blank" rel="noopener noreferrer">
                             <svg class="social-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.598h4.172L10.463 0l-7.925 15.599h4.173"/></svg>
                             <span>Strava</span>
                         </a>
                     </li>
                     <li>
-                        <a href="#komoot">
+                        <a href="https://www.komoot.com/" target="_blank" rel="noopener noreferrer">
                             <svg class="social-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v10M8 10l4-3 4 3M8 14l4 3 4-3"></path></svg>
                             <span>Komoot</span>
                         </a>
                     </li>
                 </ul>
             </div>
+        </div><!-- /footer-content -->
+
+        <!-- Copyright (Centered) -->
+        <div style="text-align: center; width: 100%; padding-top: 16px; color: var(--gray); font-size: 16px;">
+            <p style="margin: 0;">© 2026 SYNCRO LAB. All rights reserved</p>
         </div>
-        <div class="footer-copyright">
-            <p>© 2026 SYNCRO LAB. All rights reserved</p>
-        </div>
-    </div>
+    </div><!-- /footer-container -->
 </footer>
 
 <!-- Auth Drawer (Side Drawer) -->
