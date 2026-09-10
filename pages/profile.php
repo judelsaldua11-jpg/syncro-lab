@@ -1,5 +1,5 @@
 <?php
-// pages/profile.php - User Profile with Chat
+// pages/profile.php - User Profile & Service Appointments
 
 session_start();
 require_once __DIR__ . '/../database/config.php';
@@ -14,14 +14,22 @@ $user = getCurrentUser();
 $pdo = getConnection();
 $userId = $_SESSION['user_id'];
 $userRole = $_SESSION['role'] ?? 'customer';
-$branchId = $_SESSION['branch_id'] ?? 0;
 
-// Get branches for chat (customers)
-$branches = [];
-if ($userRole === 'customer') {
-    $stmt = $pdo->query("SELECT id, name FROM branches WHERE is_active = 1 ORDER BY name");
-    $branches = $stmt->fetchAll();
-}
+// Fetch customer bookings
+$stmt = $pdo->prepare("
+    SELECT sb.*, b.name AS branch_name
+    FROM service_bookings sb
+    JOIN branches b ON sb.branch_id = b.id
+    WHERE sb.user_id = ?
+    ORDER BY sb.scheduled_date DESC
+");
+$stmt->execute([$userId]);
+$userBookings = $stmt->fetchAll();
+
+// Fetch customer order count
+$stmt = $pdo->prepare("SELECT COUNT(*) FROM orders WHERE user_id = ?");
+$stmt->execute([$userId]);
+$orderCount = $stmt->fetchColumn();
 
 include __DIR__ . '/../src/Views/layouts/header.php';
 ?>
@@ -36,66 +44,81 @@ include __DIR__ . '/../src/Views/layouts/header.php';
             Welcome back, <?= htmlspecialchars($user['full_name']) ?>
         </p>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 32px;">
+        <div style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 32px;">
             
-            <!-- ==================== LEFT: PROFILE INFO ==================== -->
-            <div style="background: #fff; border: 1px solid var(--gray); border-radius: var(--radius); padding: 32px; box-shadow: var(--shadow);">
-                <h2 style="font-family: var(--font-heading); font-size: 24px; margin-bottom: 16px; text-transform: uppercase;">Account Details</h2>
+            <!-- Account Details -->
+            <div style="background: #fff; border: 1px solid var(--gray); border-radius: var(--radius); padding: 32px; box-shadow: var(--shadow); height: fit-content;">
+                <h2 style="font-family: var(--font-heading); font-size: 24px; margin-bottom: 20px; text-transform: uppercase;">Account Details</h2>
                 
-                <p><strong>Name:</strong> <?= htmlspecialchars($user['full_name']) ?></p>
-                <p><strong>Email:</strong> <?= htmlspecialchars($user['email']) ?></p>
-                <p><strong>Phone:</strong> <?= htmlspecialchars($user['phone'] ?? 'Not set') ?></p>
-                <p><strong>Role:</strong> <?= ucfirst($user['role']) ?></p>
-                <p><strong>Member Since:</strong> <?= date('F d, Y', strtotime($user['created_at'])) ?></p>
-                <?php if ($user['membership_expiry']): ?>
-                    <p><strong>Membership Expires:</strong> <?= date('F d, Y', strtotime($user['membership_expiry'])) ?></p>
-                <?php endif; ?>
+                <div style="display: flex; flex-direction: column; gap: 10px; font-size: 15px;">
+                    <p><strong>Name:</strong> <?= htmlspecialchars($user['full_name']) ?></p>
+                    <p><strong>Email:</strong> <?= htmlspecialchars($user['email']) ?></p>
+                    <p><strong>Phone:</strong> <?= htmlspecialchars($user['phone'] ?? 'Not set') ?></p>
+                    <p><strong>Role:</strong> <?= ucfirst($user['role']) ?></p>
+                    <p><strong>Member Since:</strong> <?= date('F d, Y', strtotime($user['created_at'])) ?></p>
+                    <?php if (!empty($user['membership_expiry'])): ?>
+                        <p><strong>Membership Status:</strong> 
+                            <span style="color: var(--green); font-weight: 700;">Active</span> (expires <?= date('M d, Y', strtotime($user['membership_expiry'])) ?>)
+                        </p>
+                    <?php endif; ?>
+                </div>
                 
-                <p style="margin-top: 20px;">
-                    <a href="orders.php" style="color: var(--green); font-weight: 600;">📦 View My Orders</a>
-                </p>
-                <?php if ($userRole === 'hq_admin' || $userRole === 'branch_manager'): ?>
-                    <p style="margin-top: 8px;">
-                        <a href="admin/dashboard.php" style="color: var(--green); font-weight: 600;">📊 Dashboard</a>
-                    </p>
-                <?php endif; ?>
+                <div style="margin-top: 24px; display: flex; flex-direction: column; gap: 10px;">
+                    <a href="orders.php" class="btn btn--green btn--small" style="text-align: center; justify-content: center;">
+                        📦 View My Orders (<?= $orderCount ?>)
+                    </a>
+                    <a href="booking.php" class="btn btn--outline btn--small" style="text-align: center; justify-content: center;">
+                        🛠️ Book New Service
+                    </a>
+                    <?php if ($userRole === 'hq_admin' || $userRole === 'branch_manager'): ?>
+                        <a href="admin/dashboard.php" class="btn btn--outline btn--small" style="text-align: center; justify-content: center;">
+                            📊 Control Dashboard
+                        </a>
+                    <?php endif; ?>
+                </div>
             </div>
 
-            <!-- ==================== RIGHT: CHAT ==================== -->
+            <!-- Service Appointments -->
             <div style="background: #fff; border: 1px solid var(--gray); border-radius: var(--radius); padding: 32px; box-shadow: var(--shadow);">
-                <h2 style="font-family: var(--font-heading); font-size: 24px; margin-bottom: 16px; text-transform: uppercase;">💬 Chat Support</h2>
+                <h2 style="font-family: var(--font-heading); font-size: 24px; margin-bottom: 20px; text-transform: uppercase;">My Service Appointments</h2>
                 
-                <?php if ($userRole === 'customer'): ?>
-                    <!-- Customer: select branch to chat -->
-                    <div style="margin-bottom: 16px;">
-                        <label for="chat-branch" style="font-weight: 700; display: block; margin-bottom: 4px;">Select Branch:</label>
-                        <select id="chat-branch" style="width: 100%; padding: 10px; border: 2px solid var(--gray); border-radius: var(--radius); font-size: 16px; background: #fff;">
-                            <option value="">-- Select --</option>
-                            <?php foreach ($branches as $branch): ?>
-                                <option value="<?= $branch['id'] ?>"><?= htmlspecialchars($branch['name']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div id="chat-messages-container" style="display: none;">
+                <?php if (empty($userBookings)): ?>
+                    <p style="color: var(--gray-dark); padding: 40px 0; text-align: center;">You have no active or previous service bookings.</p>
                 <?php else: ?>
-                    <!-- Manager/Admin: auto-load their branch -->
-                    <div id="chat-messages-container">
-                <?php endif; ?>
-                    
-                    <!-- Chat Messages -->
-                    <div id="chat-messages" style="height: 280px; overflow-y: auto; padding: 12px; background: var(--light); border-radius: var(--radius); border: 1px solid var(--gray); margin-bottom: 12px;">
-                        <p style="color: var(--gray-dark); text-align: center; padding: 40px 0; font-size: 14px;">
-                            <?= $userRole === 'customer' ? 'Select a branch to start chatting.' : 'No messages yet.' ?>
-                        </p>
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        <?php foreach ($userBookings as $ub): 
+                            $bStatus = $ub['status'];
+                            $bColor = '#68747b';
+                            if ($bStatus === 'pending') $bColor = '#f0ad4e';
+                            elseif ($bStatus === 'confirmed') $bColor = '#0275d8';
+                            elseif ($bStatus === 'in_progress') $bColor = '#6f42c1';
+                            elseif ($bStatus === 'completed') $bColor = 'var(--green)';
+                            elseif ($bStatus === 'cancelled') $bColor = '#d9534f';
+                        ?>
+                            <div style="background: var(--light); padding: 16px; border-radius: var(--radius); border-left: 4px solid <?= $bColor ?>;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                    <strong style="font-size: 16px; text-transform: capitalize;">
+                                        <?= str_replace('_', ' ', $ub['service_type']) ?>
+                                    </strong>
+                                    <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: <?= $bColor ?>; border: 1px solid <?= $bColor ?>; padding: 2px 8px; border-radius: 12px;">
+                                        <?= ucfirst(str_replace('_', ' ', $bStatus)) ?>
+                                    </span>
+                                </div>
+                                <p style="font-size: 13px; color: var(--gray-dark); margin: 2px 0;">
+                                    📅 <?= date('l, F d, Y @ h:i A', strtotime($ub['scheduled_date'])) ?>
+                                </p>
+                                <p style="font-size: 13px; color: var(--gray-dark); margin: 2px 0;">
+                                    📍 <?= htmlspecialchars($ub['branch_name']) ?>
+                                </p>
+                                <?php if (!empty($ub['notes'])): ?>
+                                    <p style="font-size: 12px; color: var(--dark); margin-top: 6px; background: #fff; padding: 6px 10px; border-radius: var(--radius);">
+                                        <strong>Notes:</strong> <?= htmlspecialchars($ub['notes']) ?>
+                                    </p>
+                                <?php endif; ?>
+                            </div>
+                        <?php endforeach; ?>
                     </div>
-
-                    <!-- Send Message -->
-                    <form id="chat-form" style="display: flex; gap: 8px;">
-                        <input type="text" id="chat-input" placeholder="Type a message..." 
-                               style="flex: 1; padding: 10px 12px; border: 2px solid var(--gray); border-radius: var(--radius); font-size: 14px;">
-                        <button type="submit" class="btn btn--green" style="height: 42px; font-size: 14px; padding: 0 16px;">Send</button>
-                    </form>
-                </div>
+                <?php endif; ?>
             </div>
 
         </div>
@@ -105,99 +128,5 @@ include __DIR__ . '/../src/Views/layouts/header.php';
         </p>
     </div>
 </div>
-
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    const chatMessages = document.getElementById('chat-messages');
-    const chatForm = document.getElementById('chat-form');
-    const chatInput = document.getElementById('chat-input');
-    const chatBranch = document.getElementById('chat-branch');
-    const messagesContainer = document.getElementById('chat-messages-container');
-    const userId = <?= $userId ?>;
-    const userRole = '<?= $userRole ?>';
-    
-    let currentBranch = 0;
-    let lastMessageId = 0;
-    let pollInterval = null;
-
-    <?php if ($userRole !== 'customer' && $branchId > 0): ?>
-        // Auto-load for managers/admins
-        currentBranch = <?= $branchId ?>;
-        messagesContainer.style.display = 'flex';
-        messagesContainer.style.flexDirection = 'column';
-        messagesContainer.style.flex = '1';
-        loadMessages();
-        pollInterval = setInterval(loadMessages, 3000);
-    <?php endif; ?>
-
-    // Branch selection (customers)
-    if (chatBranch) {
-        chatBranch.addEventListener('change', function() {
-            currentBranch = parseInt(this.value);
-            if (currentBranch > 0) {
-                messagesContainer.style.display = 'flex';
-                messagesContainer.style.flexDirection = 'column';
-                messagesContainer.style.flex = '1';
-                lastMessageId = 0;
-                chatMessages.innerHTML = '';
-                loadMessages();
-                if (pollInterval) clearInterval(pollInterval);
-                pollInterval = setInterval(loadMessages, 3000);
-            } else {
-                messagesContainer.style.display = 'none';
-                clearInterval(pollInterval);
-            }
-        });
-    }
-
-    // Send message
-    chatForm.addEventListener('submit', function(e) {
-        e.preventDefault();
-        const message = chatInput.value.trim();
-        if (!message || currentBranch <= 0) return;
-
-        fetch('chat-send.php', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: 'branch_id=' + encodeURIComponent(currentBranch) + '&message=' + encodeURIComponent(message)
-        })
-        .then(response => response.text())
-        .then(data => {
-            chatInput.value = '';
-            loadMessages();
-        })
-        .catch(error => console.error('Error sending message:', error));
-    });
-
-    // Load messages
-    function loadMessages() {
-        if (currentBranch <= 0) return;
-
-        fetch('chat-fetch.php?branch_id=' + encodeURIComponent(currentBranch) + '&last_id=' + encodeURIComponent(lastMessageId))
-        .then(response => response.text())
-        .then(html => {
-            if (html.trim() !== '') {
-                const tempDiv = document.createElement('div');
-                tempDiv.innerHTML = html;
-                const newMessages = tempDiv.querySelectorAll('.chat-msg');
-                newMessages.forEach(function(msg) {
-                    const id = msg.dataset.id || 0;
-                    if (id > lastMessageId) {
-                        lastMessageId = id;
-                        chatMessages.appendChild(msg);
-                    }
-                });
-                chatMessages.scrollTop = chatMessages.scrollHeight;
-            }
-        })
-        .catch(error => console.error('Error loading messages:', error));
-    }
-
-    // Initial scroll to bottom
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-});
-</script>
 
 <?php include __DIR__ . '/../src/Views/layouts/footer.php'; ?>

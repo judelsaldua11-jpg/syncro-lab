@@ -43,6 +43,9 @@ if ($isAdmin) {
     
     $stmt = $pdo->query("SELECT COUNT(*) FROM orders WHERE status = 'pending'");
     $stats['pending_orders'] = $stmt->fetchColumn();
+
+    $stmt = $pdo->query("SELECT COUNT(*) FROM service_bookings WHERE status = 'pending'");
+    $stats['pending_bookings'] = $stmt->fetchColumn();
     
     $stmt = $pdo->query("SELECT COUNT(*) FROM users WHERE role = 'customer' AND is_active = 1");
     $stats['total_customers'] = $stmt->fetchColumn();
@@ -52,6 +55,28 @@ if ($isAdmin) {
     
     $stmt = $pdo->query("SELECT SUM(total_amount) FROM orders WHERE status != 'cancelled' AND MONTH(order_date) = MONTH(CURRENT_DATE()) AND YEAR(order_date) = YEAR(CURRENT_DATE())");
     $stats['monthly_revenue'] = $stmt->fetchColumn() ?? 0;
+
+    // Recent Pending Orders for Quick Action
+    $stmt = $pdo->query("
+        SELECT o.id, o.order_date, o.total_amount, o.status, u.full_name, b.name as branch_name
+        FROM orders o
+        JOIN users u ON o.user_id = u.id
+        LEFT JOIN branches b ON o.branch_id = b.id
+        WHERE o.status = 'pending'
+        ORDER BY o.order_date DESC LIMIT 5
+    ");
+    $pendingOrdersList = $stmt->fetchAll();
+
+    // Upcoming Bookings
+    $stmt = $pdo->query("
+        SELECT sb.id, sb.scheduled_date, sb.service_type, sb.status, u.full_name, b.name as branch_name
+        FROM service_bookings sb
+        JOIN users u ON sb.user_id = u.id
+        JOIN branches b ON sb.branch_id = b.id
+        WHERE sb.status IN ('pending', 'confirmed')
+        ORDER BY sb.scheduled_date ASC LIMIT 5
+    ");
+    $upcomingBookingsList = $stmt->fetchAll();
     
 } else {
     // Branch Manager: Get branch-specific stats
@@ -78,80 +103,170 @@ if ($isAdmin) {
     $stmt = $pdo->prepare("SELECT SUM(total_amount) FROM orders WHERE branch_id = ? AND status != 'cancelled' AND MONTH(order_date) = MONTH(CURRENT_DATE()) AND YEAR(order_date) = YEAR(CURRENT_DATE())");
     $stmt->execute([$branchId]);
     $stats['monthly_revenue'] = $stmt->fetchColumn() ?? 0;
+
+    // Recent Pending Orders for this Branch
+    $stmt = $pdo->prepare("
+        SELECT o.id, o.order_date, o.total_amount, o.status, u.full_name, b.name as branch_name
+        FROM orders o
+        JOIN users u ON o.user_id = u.id
+        LEFT JOIN branches b ON o.branch_id = b.id
+        WHERE o.branch_id = ? AND o.status = 'pending'
+        ORDER BY o.order_date DESC LIMIT 5
+    ");
+    $stmt->execute([$branchId]);
+    $pendingOrdersList = $stmt->fetchAll();
+
+    // Upcoming Bookings for this Branch
+    $stmt = $pdo->prepare("
+        SELECT sb.id, sb.scheduled_date, sb.service_type, sb.status, u.full_name, b.name as branch_name
+        FROM service_bookings sb
+        JOIN users u ON sb.user_id = u.id
+        JOIN branches b ON sb.branch_id = b.id
+        WHERE sb.branch_id = ? AND sb.status IN ('pending', 'confirmed')
+        ORDER BY sb.scheduled_date ASC LIMIT 5
+    ");
+    $stmt->execute([$branchId]);
+    $upcomingBookingsList = $stmt->fetchAll();
 }
 
 include __DIR__ . '/../../src/Views/layouts/header.php';
 ?>
 
-<div style="padding: 40px 0 60px; color: var(--dark); min-height: 60vh; background: var(--light);">
+<div style="padding: 40px 0 60px; color: var(--dark); min-height: 70vh; background: var(--light);">
     <div style="max-width: 1280px; margin: 0 auto; padding: 0 40px;">
         
         <!-- Page Header -->
-        <h1 style="font-family: var(--font-heading); font-size: 48px; text-transform: uppercase; margin-bottom: 8px;">
-            Dashboard
-        </h1>
-        <p style="color: var(--gray-dark); font-size: 18px; margin-bottom: 40px;">
-            Welcome, <?= htmlspecialchars($user['full_name']) ?> 
-            (<?= $isAdmin ? 'HQ Admin' : 'Branch Manager' ?>)
-        </p>
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 32px; flex-wrap: wrap; gap: 16px;">
+            <div>
+                <h1 style="font-family: var(--font-heading); font-size: 42px; text-transform: uppercase; margin: 0 0 6px;">
+                    Control Dashboard
+                </h1>
+                <p style="color: var(--gray-dark); font-size: 16px; margin: 0;">
+                    Welcome back, <strong><?= htmlspecialchars($user['full_name']) ?></strong> &bull; 
+                    <span style="color: var(--green); font-weight: 700;"><?= $isAdmin ? 'HQ Admin' : htmlspecialchars($branchName) . ' Manager' ?></span>
+                </p>
+            </div>
+            <div>
+                <a href="inventory-add.php" class="btn btn--green btn--small" style="height: 38px; padding: 0 16px;">
+                    ➕ Stock Item
+                </a>
+            </div>
+        </div>
 
         <?php if ($isAdmin): ?>
             <!-- ==================== HQ ADMIN DASHBOARD ==================== -->
             
             <!-- Stats Grid -->
-            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 40px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 32px;">
                 <div style="background: #fff; padding: 20px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow);">
-                    <p style="color: var(--gray-dark); font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Products</p>
-                    <p style="font-family: var(--font-heading); font-size: 32px; color: var(--dark);"><?= number_format($stats['total_products']) ?></p>
+                    <p style="color: var(--gray-dark); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; margin-bottom: 6px;">Monthly Revenue</p>
+                    <p style="font-family: var(--font-heading); font-size: 28px; color: var(--green); margin: 0;">₱ <?= number_format($stats['monthly_revenue'], 2) ?></p>
                 </div>
                 <div style="background: #fff; padding: 20px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow);">
-                    <p style="color: var(--gray-dark); font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Total Stock</p>
-                    <p style="font-family: var(--font-heading); font-size: 32px; color: var(--green);"><?= number_format($stats['total_stock']) ?></p>
+                    <p style="color: var(--gray-dark); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; margin-bottom: 6px;">Pending Orders</p>
+                    <p style="font-family: var(--font-heading); font-size: 28px; color: <?= $stats['pending_orders'] > 0 ? '#f0ad4e' : 'var(--dark)' ?>; margin: 0;"><?= number_format($stats['pending_orders']) ?></p>
                 </div>
                 <div style="background: #fff; padding: 20px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow);">
-                    <p style="color: var(--gray-dark); font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Branches</p>
-                    <p style="font-family: var(--font-heading); font-size: 32px; color: var(--dark);"><?= $stats['total_branches'] ?></p>
+                    <p style="color: var(--gray-dark); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; margin-bottom: 6px;">Pending Bookings</p>
+                    <p style="font-family: var(--font-heading); font-size: 28px; color: <?= $stats['pending_bookings'] > 0 ? '#0275d8' : 'var(--dark)' ?>; margin: 0;"><?= number_format($stats['pending_bookings']) ?></p>
                 </div>
                 <div style="background: #fff; padding: 20px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow);">
-                    <p style="color: var(--gray-dark); font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Monthly Revenue</p>
-                    <p style="font-family: var(--font-heading); font-size: 32px; color: var(--green);">₱ <?= number_format($stats['monthly_revenue'], 2) ?></p>
+                    <p style="color: var(--gray-dark); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; margin-bottom: 6px;">Available Stock</p>
+                    <p style="font-family: var(--font-heading); font-size: 28px; color: var(--dark); margin: 0;"><?= number_format($stats['total_stock']) ?> <span style="font-size: 14px; color: var(--gray-dark); font-family: var(--font-body);">units</span></p>
+                </div>
+                <div style="background: #fff; padding: 20px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow);">
+                    <p style="color: var(--gray-dark); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; margin-bottom: 6px;">Active Labs</p>
+                    <p style="font-family: var(--font-heading); font-size: 28px; color: var(--dark); margin: 0;"><?= $stats['total_branches'] ?> <span style="font-size: 14px; color: var(--gray-dark); font-family: var(--font-body);">locations</span></p>
                 </div>
             </div>
 
-            <!-- Quick Links -->
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-bottom: 40px;">
-                <a href="products.php" style="text-decoration: none; background: #fff; padding: 24px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.2s ease;">
-                    <h3 style="font-family: var(--font-heading); font-size: 20px; color: var(--dark);">📦 Products</h3>
-                    <p style="color: var(--gray-dark); font-size: 14px; margin-top: 8px;">Manage product catalog and featured items</p>
+            <!-- Quick Action Management Links -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 32px;">
+                <a href="orders.php" style="text-decoration: none; background: #fff; padding: 18px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.15s ease;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
+                    <h3 style="font-family: var(--font-heading); font-size: 18px; color: var(--dark); margin: 0 0 4px;">🛒 Orders</h3>
+                    <p style="color: var(--gray-dark); font-size: 13px; margin: 0;">Fulfillment & tracking</p>
                 </a>
-                <a href="inventory.php" style="text-decoration: none; background: #fff; padding: 24px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.2s ease;">
-                    <h3 style="font-family: var(--font-heading); font-size: 20px; color: var(--dark);;">📦 Inventory</h3>
-                    <p style="color: var(--gray-dark); font-size: 14px; margin-top: 8px;">Manage stock across all branches</p>
+                <a href="bookings.php" style="text-decoration: none; background: #fff; padding: 18px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.15s ease;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
+                    <h3 style="font-family: var(--font-heading); font-size: 18px; color: var(--dark); margin: 0 0 4px;">📅 Bookings</h3>
+                    <p style="color: var(--gray-dark); font-size: 13px; margin: 0;">Service & fit appointments</p>
                 </a>
-                <a href="bookings.php" style="text-decoration: none; background: #fff; padding: 24px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.2s ease;">
-                    <h3 style="font-family: var(--font-heading); font-size: 20px; color: var(--dark);">📅 Bookings</h3>
-                    <p style="color: var(--gray-dark); font-size: 14px; margin-top: 8px;">Manage customer service appointments</p>
+                <a href="inventory.php" style="text-decoration: none; background: #fff; padding: 18px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.15s ease;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
+                    <h3 style="font-family: var(--font-heading); font-size: 18px; color: var(--dark); margin: 0 0 4px;">📦 Inventory</h3>
+                    <p style="color: var(--gray-dark); font-size: 13px; margin: 0;">Multi-branch stock</p>
                 </a>
-                <a href="warranty.php" style="text-decoration: none; background: #fff; padding: 24px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.2s ease;">
-                    <h3 style="font-family: var(--font-heading); font-size: 20px; color: var(--dark);">🛡️ Warranty</h3>
-                    <p style="color: var(--gray-dark); font-size: 14px; margin-top: 8px;">Manage warranty claims</p>
+                <a href="products.php" style="text-decoration: none; background: #fff; padding: 18px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.15s ease;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
+                    <h3 style="font-family: var(--font-heading); font-size: 18px; color: var(--dark); margin: 0 0 4px;">🏷️ Catalog</h3>
+                    <p style="color: var(--gray-dark); font-size: 13px; margin: 0;">Products & prices</p>
                 </a>
-                <a href="../chat.php" style="text-decoration: none; background: #fff; padding: 24px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.2s ease;">
-                    <h3 style="font-family: var(--font-heading); font-size: 20px; color: var(--dark);">💬 Chat</h3>
-                    <p style="color: var(--gray-dark); font-size: 14px; margin-top: 8px;">Respond to customer inquiries</p>
+                <a href="locations.php" style="text-decoration: none; background: #fff; padding: 18px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.15s ease;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
+                    <h3 style="font-family: var(--font-heading); font-size: 18px; color: var(--dark); margin: 0 0 4px;">📍 Locations</h3>
+                    <p style="color: var(--gray-dark); font-size: 13px; margin: 0;">Branch hubs</p>
                 </a>
-                <a href="locations.php" style="text-decoration: none; background: #fff; padding: 24px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.2s ease;">
-                    <h3 style="font-family: var(--font-heading); font-size: 20px; color: var(--dark);">📍 Locations</h3>
-                    <p style="color: var(--gray-dark); font-size: 14px; margin-top: 8px;">Manage lab branches</p>
+                <a href="users.php" style="text-decoration: none; background: #fff; padding: 18px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.15s ease;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
+                    <h3 style="font-family: var(--font-heading); font-size: 18px; color: var(--dark); margin: 0 0 4px;">👥 Users</h3>
+                    <p style="color: var(--gray-dark); font-size: 13px; margin: 0;">Accounts & roles</p>
                 </a>
-                <a href="categories.php" style="text-decoration: none; background: #fff; padding: 24px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.2s ease;">
-                    <h3 style="font-family: var(--font-heading); font-size: 20px; color: var(--dark);">📂 Categories</h3>
-                    <p style="color: var(--gray-dark); font-size: 14px; margin-top: 8px;">Manage product categories</p>
-                </a>
-                <a href="users.php" style="text-decoration: none; background: #fff; padding: 24px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.2s ease;">
-                    <h3 style="font-family: var(--font-heading); font-size: 20px; color: var(--dark);">👥 Users</h3>
-                    <p style="color: var(--gray-dark); font-size: 14px; margin-top: 8px;">Manage user accounts & roles</p>
-                </a>
+            </div>
+
+            <!-- Priority Queues Grid -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 32px;">
+                
+                <!-- Pending Orders Widget -->
+                <div style="background: #fff; border-radius: var(--radius); border: 1px solid var(--gray); padding: 20px; box-shadow: var(--shadow);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                        <h3 style="font-family: var(--font-heading); font-size: 18px; text-transform: uppercase; margin: 0;">
+                            ⚡ Orders Awaiting Dispatch
+                        </h3>
+                        <a href="orders.php?status=pending" style="color: var(--green); font-size: 12px; font-weight: 700;">View All &rarr;</a>
+                    </div>
+                    <?php if (empty($pendingOrdersList)): ?>
+                        <p style="color: var(--gray-dark); font-size: 13px; padding: 24px 0; text-align: center;">No orders awaiting dispatch. ✅</p>
+                    <?php else: ?>
+                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                            <?php foreach ($pendingOrdersList as $po): ?>
+                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: var(--light); border-radius: var(--radius); border-left: 3px solid #f0ad4e;">
+                                    <div>
+                                        <strong style="font-size: 14px;">Order #<?= str_pad($po['id'], 5, '0', STR_PAD_LEFT) ?></strong> &bull; <?= htmlspecialchars($po['full_name']) ?>
+                                        <div style="font-size: 11px; color: var(--gray-dark);"><?= htmlspecialchars($po['branch_name'] ?? 'Multi-Branch') ?> &bull; <?= date('M d, h:i A', strtotime($po['order_date'])) ?></div>
+                                    </div>
+                                    <div style="text-align: right;">
+                                        <strong style="font-size: 14px; color: var(--dark);">₱ <?= number_format($po['total_amount'], 2) ?></strong><br>
+                                        <a href="orders.php?search=<?= $po['id'] ?>" class="btn btn--small btn--outline" style="height: 24px; font-size: 11px; padding: 0 8px; margin-top: 4px;">Fulfill</a>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+
+                <!-- Upcoming Appointments Widget -->
+                <div style="background: #fff; border-radius: var(--radius); border: 1px solid var(--gray); padding: 20px; box-shadow: var(--shadow);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                        <h3 style="font-family: var(--font-heading); font-size: 18px; text-transform: uppercase; margin: 0;">
+                            🛠️ Upcoming Lab Services
+                        </h3>
+                        <a href="bookings.php" style="color: var(--green); font-size: 12px; font-weight: 700;">View All &rarr;</a>
+                    </div>
+                    <?php if (empty($upcomingBookingsList)): ?>
+                        <p style="color: var(--gray-dark); font-size: 13px; padding: 24px 0; text-align: center;">No upcoming service bookings. ✅</p>
+                    <?php else: ?>
+                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                            <?php foreach ($upcomingBookingsList as $ub): ?>
+                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: var(--light); border-radius: var(--radius); border-left: 3px solid <?= $ub['status'] === 'pending' ? '#f0ad4e' : '#0275d8' ?>;">
+                                    <div>
+                                        <strong style="font-size: 14px;"><?= htmlspecialchars($ub['full_name']) ?></strong> &bull; <span style="font-size: 12px; text-transform: capitalize;"><?= str_replace('_', ' ', $ub['service_type']) ?></span>
+                                        <div style="font-size: 11px; color: var(--gray-dark);"><?= htmlspecialchars($ub['branch_name']) ?> &bull; <?= date('M d, Y @ h:i A', strtotime($ub['scheduled_date'])) ?></div>
+                                    </div>
+                                    <div style="text-align: right;">
+                                        <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: <?= $ub['status'] === 'pending' ? '#f0ad4e' : '#0275d8' ?>;"><?= ucfirst($ub['status']) ?></span><br>
+                                        <a href="bookings.php?status=<?= $ub['status'] ?>" class="btn btn--small btn--outline" style="height: 24px; font-size: 11px; padding: 0 8px; margin-top: 4px;">Manage</a>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+
             </div>
 
             <!-- ============================================ -->
@@ -319,38 +434,84 @@ include __DIR__ . '/../../src/Views/layouts/header.php';
             </div>
 
             <!-- Quick Links -->
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-bottom: 40px;">
-                <a href="inventory.php" style="text-decoration: none; background: #fff; padding: 24px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.2s ease;">
-                    <h3 style="font-family: var(--font-heading); font-size: 20px; color: var(--dark);">📦 Inventory</h3>
-                    <p style="color: var(--gray-dark); font-size: 14px; margin-top: 8px;">Manage your branch stock</p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 32px;">
+                <a href="orders.php" style="text-decoration: none; background: #fff; padding: 18px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.15s ease;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
+                    <h3 style="font-family: var(--font-heading); font-size: 18px; color: var(--dark); margin: 0 0 4px;">🛒 Branch Orders</h3>
+                    <p style="color: var(--gray-dark); font-size: 13px; margin: 0;">Fulfill local orders</p>
                 </a>
-                <a href="inventory-add.php" style="text-decoration: none; background: #fff; padding: 24px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.2s ease;">
-                    <h3 style="font-family: var(--font-heading); font-size: 20px; color: var(--dark);">➕ Add Stock</h3>
-                    <p style="color: var(--gray-dark); font-size: 14px; margin-top: 8px;">Add new items to inventory</p>
+                <a href="bookings.php" style="text-decoration: none; background: #fff; padding: 18px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.15s ease;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
+                    <h3 style="font-family: var(--font-heading); font-size: 18px; color: var(--dark); margin: 0 0 4px;">📅 Bookings</h3>
+                    <p style="color: var(--gray-dark); font-size: 13px; margin: 0;">Workshop calendar</p>
                 </a>
-                <a href="bookings.php" style="text-decoration: none; background: #fff; padding: 24px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.2s ease;">
-                    <h3 style="font-family: var(--font-heading); font-size: 20px; color: var(--dark);">📅 Bookings</h3>
-                    <p style="color: var(--gray-dark); font-size: 14px; margin-top: 8px;">Manage customer service appointments</p>
+                <a href="inventory.php" style="text-decoration: none; background: #fff; padding: 18px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.15s ease;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
+                    <h3 style="font-family: var(--font-heading); font-size: 18px; color: var(--dark); margin: 0 0 4px;">📦 Inventory</h3>
+                    <p style="color: var(--gray-dark); font-size: 13px; margin: 0;">Stock count & serials</p>
                 </a>
-                <a href="warranty.php" style="text-decoration: none; background: #fff; padding: 24px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.2s ease;">
-                    <h3 style="font-family: var(--font-heading); font-size: 20px; color: var(--dark);">🛡️ Warranty</h3>
-                    <p style="color: var(--gray-dark); font-size: 14px; margin-top: 8px;">Manage warranty claims</p>
-                </a>
-                <a href="../chat.php" style="text-decoration: none; background: #fff; padding: 24px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.2s ease;">
-                    <h3 style="font-family: var(--font-heading); font-size: 20px; color: var(--dark);">💬 Chat</h3>
-                    <p style="color: var(--gray-dark); font-size: 14px; margin-top: 8px;">Respond to customer inquiries</p>
+                <a href="inventory-add.php" style="text-decoration: none; background: #fff; padding: 18px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); transition: transform 0.15s ease;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
+                    <h3 style="font-family: var(--font-heading); font-size: 18px; color: var(--dark); margin: 0 0 4px;">➕ Add Stock</h3>
+                    <p style="color: var(--gray-dark); font-size: 13px; margin: 0;">Receive new units</p>
                 </a>
             </div>
 
-            <!-- Pending Bookings -->
-            <div style="background: #fff; padding: 24px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); margin-bottom: 40px;">
-                <h3 style="font-family: var(--font-heading); font-size: 18px; margin-bottom: 16px;">📅 Pending Bookings</h3>
-                <?php if ($stats['pending_bookings'] > 0): ?>
-                    <p><strong><?= $stats['pending_bookings'] ?></strong> booking(s) waiting for confirmation.</p>
-                    <a href="bookings.php" style="color: var(--green); font-weight: 600;">View all bookings →</a>
-                <?php else: ?>
-                    <p style="color: var(--gray-dark);">No pending bookings. ✅</p>
-                <?php endif; ?>
+            <!-- Priority Action Panels (Orders & Bookings) -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 32px;">
+                
+                <!-- Pending Branch Orders -->
+                <div style="background: #fff; border-radius: var(--radius); border: 1px solid var(--gray); padding: 20px; box-shadow: var(--shadow);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                        <h3 style="font-family: var(--font-heading); font-size: 18px; text-transform: uppercase; margin: 0;">
+                            ⚡ Awaiting Fulfillment
+                        </h3>
+                        <a href="orders.php?status=pending" style="color: var(--green); font-size: 12px; font-weight: 700;">View All &rarr;</a>
+                    </div>
+                    <?php if (empty($pendingOrdersList)): ?>
+                        <p style="color: var(--gray-dark); font-size: 13px; padding: 24px 0; text-align: center;">No orders awaiting dispatch for this branch. ✅</p>
+                    <?php else: ?>
+                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                            <?php foreach ($pendingOrdersList as $po): ?>
+                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: var(--light); border-radius: var(--radius); border-left: 3px solid #f0ad4e;">
+                                    <div>
+                                        <strong style="font-size: 14px;">Order #<?= str_pad($po['id'], 5, '0', STR_PAD_LEFT) ?></strong> &bull; <?= htmlspecialchars($po['full_name']) ?>
+                                        <div style="font-size: 11px; color: var(--gray-dark);"><?= date('M d, h:i A', strtotime($po['order_date'])) ?></div>
+                                    </div>
+                                    <div style="text-align: right;">
+                                        <strong style="font-size: 14px; color: var(--dark);">₱ <?= number_format($po['total_amount'], 2) ?></strong><br>
+                                        <a href="orders.php?search=<?= $po['id'] ?>" class="btn btn--small btn--outline" style="height: 24px; font-size: 11px; padding: 0 8px; margin-top: 4px;">Process</a>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+
+                <!-- Upcoming Appointments -->
+                <div style="background: #fff; border-radius: var(--radius); border: 1px solid var(--gray); padding: 20px; box-shadow: var(--shadow);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                        <h3 style="font-family: var(--font-heading); font-size: 18px; text-transform: uppercase; margin: 0;">
+                            🛠️ Upcoming Workshop Sessions
+                        </h3>
+                        <a href="bookings.php" style="color: var(--green); font-size: 12px; font-weight: 700;">View All &rarr;</a>
+                    </div>
+                    <?php if (empty($upcomingBookingsList)): ?>
+                        <p style="color: var(--gray-dark); font-size: 13px; padding: 24px 0; text-align: center;">No scheduled services at this branch. ✅</p>
+                    <?php else: ?>
+                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                            <?php foreach ($upcomingBookingsList as $ub): ?>
+                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: var(--light); border-radius: var(--radius); border-left: 3px solid <?= $ub['status'] === 'pending' ? '#f0ad4e' : '#0275d8' ?>;">
+                                    <div>
+                                        <strong style="font-size: 14px;"><?= htmlspecialchars($ub['full_name']) ?></strong> &bull; <span style="font-size: 12px; text-transform: capitalize;"><?= str_replace('_', ' ', $ub['service_type']) ?></span>
+                                        <div style="font-size: 11px; color: var(--gray-dark);"><?= date('M d, Y @ h:i A', strtotime($ub['scheduled_date'])) ?></div>
+                                    </div>
+                                    <div style="text-align: right;">
+                                        <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: <?= $ub['status'] === 'pending' ? '#f0ad4e' : '#0275d8' ?>;"><?= ucfirst($ub['status']) ?></span><br>
+                                        <a href="bookings.php?status=<?= $ub['status'] ?>" class="btn btn--small btn--outline" style="height: 24px; font-size: 11px; padding: 0 8px; margin-top: 4px;">Manage</a>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+
             </div>
 
             <!-- ============================================ -->

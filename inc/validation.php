@@ -201,55 +201,6 @@ function validateBookingInput(array $post): array
     ];
 }
 
-function validateWarrantyInput(array $post, array $files): array
-{
-    $orderItemId = trim($post['order_item_id'] ?? '');
-    $issueDescription = trim($post['issue_description'] ?? '');
-    $refundOption = trim($post['refund_option'] ?? 'repair');
-    
-    $allowedRefundOptions = ['repair', 'replacement', 'store_credit', 'cash_back'];
-    
-    $errors = array_filter([
-        validateRequired($orderItemId, 'Order Item'),
-        validateIntRange($orderItemId, 'Order Item', 1, 999999),
-        validateRequired($issueDescription, 'Issue Description'),
-        in_array($refundOption, $allowedRefundOptions) ? null : "Invalid refund option.",
-    ]);
-    
-    // Validate file uploads (max 5 files)
-    $fileErrors = [];
-    $uploadedFiles = [];
-    $fileCount = 0;
-    
-    foreach ($files as $key => $file) {
-        if (strpos($key, 'attachment_') === 0 && $file['error'] !== UPLOAD_ERR_NO_FILE) {
-            $fileCount++;
-            $error = validateFileUpload($file, 5);
-            if ($error) {
-                $fileErrors[] = $error;
-            } else {
-                $uploadedFiles[$key] = $file;
-            }
-        }
-    }
-    
-    if ($fileCount > 5) {
-        $fileErrors[] = "Maximum 5 files allowed.";
-    }
-    
-    $errors = array_merge($errors, $fileErrors);
-    $errors = array_values(array_filter($errors));
-    
-    return [
-        'errors' => $errors,
-        'data' => [
-            'order_item_id' => (int) $orderItemId,
-            'issue_description' => htmlspecialchars($issueDescription),
-            'refund_option' => $refundOption,
-            'files' => $uploadedFiles,
-        ]
-    ];
-}
 
 function validateCheckoutInput(array $post): array
 {

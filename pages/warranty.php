@@ -1,125 +1,137 @@
 <?php
-// pages/warranty.php - File a Warranty Claim
+// pages/warranty.php - SYNCRO LAB Warranty & Performance Guarantee Policy
 
 session_start();
 require_once __DIR__ . '/../database/config.php';
 require_once __DIR__ . '/../inc/functions.php';
 
-// Check if user is logged in
-if (!isLoggedIn()) {
-    header('Location: auth/login.php?error=Please log in to file a warranty claim.');
-    exit;
-}
-
-$pdo = getConnection();
-$userId = $_SESSION['user_id'];
-
-// Get user's orders with items (for dropdown)
-$stmt = $pdo->prepare("
-    SELECT 
-        oi.id AS order_item_id,
-        o.id AS order_id,
-        p.name AS product_name,
-        i.serial_number
-    FROM order_items oi
-    JOIN inventory i ON oi.inventory_id = i.id
-    JOIN products p ON i.product_id = p.id
-    JOIN orders o ON oi.order_id = o.id
-    WHERE o.user_id = ?
-    ORDER BY o.order_date DESC
-");
-$stmt->execute([$userId]);
-$orderItems = $stmt->fetchAll();
-
-// Get error/success messages
-$error = $_GET['error'] ?? '';
-$success = $_GET['success'] ?? '';
-
 include __DIR__ . '/../src/Views/layouts/header.php';
 ?>
 
-<div style="padding: 60px 0; color: var(--dark); min-height: 60vh; background: var(--light);">
-    <div style="max-width: 800px; margin: 0 auto; padding: 0 40px;">
+<div style="padding: 60px 0 80px; color: var(--dark); min-height: 70vh; background: var(--light);">
+    <div style="max-width: 1000px; margin: 0 auto; padding: 0 40px;">
         
-        <h1 style="font-family: var(--font-heading); font-size: 48px; text-transform: uppercase; margin-bottom: 8px;">
-            Warranty Claim
-        </h1>
-        <p style="color: var(--gray-dark); font-size: 18px; margin-bottom: 32px;">
-            Submit a warranty claim for a product you purchased.
-        </p>
+        <!-- Header Section -->
+        <div style="margin-bottom: 48px; border-bottom: 2px solid var(--gray); padding-bottom: 24px;">
+            <p style="color: var(--green); font-family: var(--font-heading); font-size: 14px; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px;">
+                Customer Care & Quality Standards
+            </p>
+            <h1 style="font-family: var(--font-heading); font-size: 46px; text-transform: uppercase; margin: 0 0 12px; line-height: 1.1;">
+                Warranty & Guarantee Policy
+            </h1>
+            <p style="color: var(--gray-dark); font-size: 18px; margin: 0; line-height: 1.6;">
+                Every component curated and bicycle calibrated at SYNCRO LAB is backed by strict engineering tolerances and manufacturer-authorized coverage.
+            </p>
+        </div>
 
-        <?php if ($error): ?>
-            <div style="background: #ffebee; color: #c62828; padding: 16px; border-radius: var(--radius); margin-bottom: 24px; border-left: 4px solid #d32f2f;">
-                <?= htmlspecialchars($error) ?>
+        <!-- Coverage Highlights Grid -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; margin-bottom: 48px;">
+            <div style="background: #fff; border-radius: var(--radius); border: 1px solid var(--gray); padding: 24px; box-shadow: var(--shadow);">
+                <span style="font-size: 32px; display: block; margin-bottom: 12px;">🛡️</span>
+                <h3 style="font-family: var(--font-heading); font-size: 20px; text-transform: uppercase; margin: 0 0 8px;">
+                    Manufacturer Warranty
+                </h3>
+                <p style="color: var(--gray-dark); font-size: 14px; line-height: 1.6; margin: 0;">
+                    100% genuine components sourced via official global distribution channels with full factory warranty protection.
+                </p>
             </div>
-        <?php endif; ?>
-        <?php if ($success): ?>
-            <div style="background: #e8f5e9; color: #2e7d32; padding: 16px; border-radius: var(--radius); margin-bottom: 24px; border-left: 4px solid var(--green);">
-                <?= htmlspecialchars($success) ?>
+
+            <div style="background: #fff; border-radius: var(--radius); border: 1px solid var(--gray); padding: 24px; box-shadow: var(--shadow);">
+                <span style="font-size: 32px; display: block; margin-bottom: 12px;">⚙️</span>
+                <h3 style="font-family: var(--font-heading); font-size: 20px; text-transform: uppercase; margin: 0 0 8px;">
+                    1-Year Workshop Labor
+                </h3>
+                <p style="color: var(--gray-dark); font-size: 14px; line-height: 1.6; margin: 0;">
+                    All bespoke frame-up builds and custom builds completed in our labs are warranted against assembly defects for 12 months.
+                </p>
             </div>
-        <?php endif; ?>
 
-        <?php if (empty($orderItems)): ?>
-            <div style="text-align: center; padding: 60px 0; background: #fff; border-radius: var(--radius); border: 1px solid var(--gray);">
-                <p style="font-size: 22px; color: var(--gray-dark);">You haven't purchased any products yet.</p>
-                <a href="shop.php" class="btn btn--green" style="margin-top: 20px;">Start Shopping</a>
+            <div style="background: #fff; border-radius: var(--radius); border: 1px solid var(--gray); padding: 24px; box-shadow: var(--shadow);">
+                <span style="font-size: 32px; display: block; margin-bottom: 12px;">📍</span>
+                <h3 style="font-family: var(--font-heading); font-size: 20px; text-transform: uppercase; margin: 0 0 8px;">
+                    Multi-Hub Support
+                </h3>
+                <p style="color: var(--gray-dark); font-size: 14px; line-height: 1.6; margin: 0;">
+                    Need a warranty inspection or retorque? Present your invoice or serial number at any of our active lab hubs nationwide or internationally.
+                </p>
             </div>
-        <?php else: ?>
-            <form method="POST" action="warranty-handler.php" enctype="multipart/form-data" style="background: #fff; padding: 32px; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow);">
-                
-                <div style="display: grid; gap: 20px;">
-                    
-                    <div>
-                        <label for="order_item_id" style="font-weight: 700; display: block; margin-bottom: 4px;">Select Product *</label>
-                        <select id="order_item_id" name="order_item_id" required
-                                style="width: 100%; padding: 12px; border: 2px solid var(--gray); border-radius: var(--radius); font-size: 16px; background: #fff;">
-                            <option value="">-- Select a product --</option>
-                            <?php foreach ($orderItems as $item): ?>
-                                <option value="<?= $item['order_item_id'] ?>">
-                                    <?= htmlspecialchars($item['product_name']) ?> (SN: <?= htmlspecialchars($item['serial_number']) ?>) - Order #<?= $item['order_id'] ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
+        </div>
 
-                    <div>
-                        <label for="issue_description" style="font-weight: 700; display: block; margin-bottom: 4px;">Issue Description *</label>
-                        <textarea id="issue_description" name="issue_description" rows="5" required
-                                  style="width: 100%; padding: 12px; border: 2px solid var(--gray); border-radius: var(--radius); font-size: 16px; font-family: inherit;"
-                                  placeholder="Describe the issue with the product..."></textarea>
-                    </div>
+        <!-- Detailed Policy Sections -->
+        <div style="background: #fff; border-radius: var(--radius); border: 1px solid var(--gray); padding: 36px; box-shadow: var(--shadow); margin-bottom: 40px;">
+            
+            <!-- Section 1 -->
+            <div style="margin-bottom: 32px;">
+                <h2 style="font-family: var(--font-heading); font-size: 22px; text-transform: uppercase; margin-bottom: 12px; color: var(--dark);">
+                    1. Scope of Coverage
+                </h2>
+                <p style="color: var(--gray-dark); line-height: 1.7; font-size: 15px; margin-bottom: 12px;">
+                    SYNCRO LAB guarantees that all new hardware, electronic groupsets (Shimano, SRAM), ceramic bearings, wheelsets, and frame units purchased through our website or branch hubs are free from manufacturing defects in material and workmanship.
+                </p>
+                <ul style="list-style: disc; padding-left: 20px; color: var(--gray-dark); line-height: 1.7; font-size: 15px;">
+                    <li><strong>Framesets:</strong> Covered according to the primary manufacturer’s terms (typically 2 to 5 years, or lifetime where registered).</li>
+                    <li><strong>Electronic Components & Groupsets:</strong> 2-year warranty against electrical and sensor failure under normal operating parameters.</li>
+                    <li><strong>Bearings & Bottom Brackets:</strong> Subject to standard manufacturer ceramic warranty policies.</li>
+                    <li><strong>Apparel & Gear:</strong> 90-day coverage against stitching or seam separation.</li>
+                </ul>
+            </div>
 
-                    <div>
-                        <label for="refund_option" style="font-weight: 700; display: block; margin-bottom: 4px;">Preferred Resolution *</label>
-                        <select id="refund_option" name="refund_option" required
-                                style="width: 100%; padding: 12px; border: 2px solid var(--gray); border-radius: var(--radius); font-size: 16px; background: #fff;">
-                            <option value="repair">Repair</option>
-                            <option value="replacement">Replacement</option>
-                            <option value="store_credit">Store Credit</option>
-                            <option value="cash_back">Cash Back</option>
-                        </select>
-                    </div>
+            <!-- Section 2 -->
+            <div style="margin-bottom: 32px; border-top: 1px solid #eee; padding-top: 24px;">
+                <h2 style="font-family: var(--font-heading); font-size: 22px; text-transform: uppercase; margin-bottom: 12px; color: var(--dark);">
+                    2. Exclusions & Limitations
+                </h2>
+                <p style="color: var(--gray-dark); line-height: 1.7; font-size: 15px; margin-bottom: 12px;">
+                    Our warranty ensures technical excellence but does not cover damage resulting from:
+                </p>
+                <ul style="list-style: disc; padding-left: 20px; color: var(--gray-dark); line-height: 1.7; font-size: 15px;">
+                    <li>Normal wear and tear (including chains, brake pads, cassettes, bar tape, and tires).</li>
+                    <li>Crashes, impacts, reckless riding, or exceeding recommended torque and weight specifications.</li>
+                    <li>Improper home installation or modifications performed outside of authorized SYNCRO LAB technicians.</li>
+                    <li>Corrosion or water intrusion caused by high-pressure jet washing or neglected maintenance.</li>
+                </ul>
+            </div>
 
-                    <div>
-                        <label for="attachments" style="font-weight: 700; display: block; margin-bottom: 4px;">Attachments (Photos)</label>
-                        <input type="file" id="attachments" name="attachments[]" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.pdf"
-                               style="width: 100%; padding: 12px; border: 2px solid var(--gray); border-radius: var(--radius); font-size: 16px; background: #fff;">
-                        <p style="color: var(--gray-dark); font-size: 12px; margin-top: 4px;">
-                            Max 5 files, 5MB each. Allowed: JPG, PNG, GIF, WebP, PDF.
-                        </p>
-                    </div>
-
-                    <div style="display: flex; gap: 16px; margin-top: 8px;">
-                        <button type="submit" class="btn btn--green" style="height: 48px; font-size: 16px; padding: 0 32px;">
-                            SUBMIT CLAIM
-                        </button>
-                        <a href="../index.php" class="btn btn--outline" style="height: 48px; font-size: 16px; padding: 0 32px;">
-                            CANCEL
-                        </a>
-                    </div>
+            <!-- Section 3 -->
+            <div style="border-top: 1px solid #eee; padding-top: 24px;">
+                <h2 style="font-family: var(--font-heading); font-size: 22px; text-transform: uppercase; margin-bottom: 12px; color: var(--dark);">
+                    3. How to Request Service or Inspection
+                </h2>
+                <p style="color: var(--gray-dark); line-height: 1.7; font-size: 15px; margin-bottom: 16px;">
+                    If you suspect an issue with your equipment, our master mechanics will inspect and diagnose your bicycle using calibrated diagnostic instruments.
+                </p>
+                <div style="background: var(--light); border-left: 4px solid var(--green); padding: 18px 20px; border-radius: var(--radius);">
+                    <p style="font-size: 15px; margin: 0 0 8px; font-weight: 700;">
+                        Recommended Procedure:
+                    </p>
+                    <ol style="padding-left: 20px; margin: 0 0 16px; color: var(--gray-dark); font-size: 14px; line-height: 1.6;">
+                        <li>Book a diagnostic appointment via our <a href="booking.php?service=repair_maintenance" style="color: var(--green); font-weight: 700; text-decoration: underline;">Service Booking Form</a>.</li>
+                        <li>Bring your bicycle or component to your selected SYNCRO LAB branch alongside your Order ID or serial number receipt.</li>
+                        <li>Our certified staff will inspect the unit and coordinate directly with the manufacturer for replacement or repair.</li>
+                    </ol>
+                    <p style="font-size: 14px; margin: 0; color: var(--gray-dark); line-height: 1.6;">
+                        For questions or remote warranty inquiries, you can contact our support team directly via email at <a href="mailto:contact@syncrolab.com" style="color: var(--green); font-weight: 700; text-decoration: underline;">contact@syncrolab.com</a>.
+                    </p>
                 </div>
-            </form>
-        <?php endif; ?>
+            </div>
+
+        </div>
+
+        <!-- Footer Actions -->
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+            <a href="../index.php" style="color: var(--green); font-weight: 700; text-decoration: none;">
+                &larr; Back to Home
+            </a>
+            <div style="display: flex; gap: 12px;">
+                <a href="booking.php" class="btn btn--green btn--small" style="height: 38px; padding: 0 20px;">
+                    Book Workshop Inspection
+                </a>
+                <a href="about.php" class="btn btn--outline btn--small" style="height: 38px; padding: 0 20px;">
+                    About Our Standards
+                </a>
+            </div>
+        </div>
+
     </div>
 </div>
 

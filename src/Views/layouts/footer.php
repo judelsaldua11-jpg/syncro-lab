@@ -122,8 +122,8 @@ $userRole = $isLoggedIn ? ($_SESSION['role'] ?? 'customer') : '';
                 <a href="/syncro lab/pages/orders.php" class="btn btn--outline" style="width: 100%; justify-content: center;">
                     📦 MY ORDERS
                 </a>
-                <a href="/syncro lab/pages/chat.php" class="btn btn--outline" style="width: 100%; justify-content: center;">
-                    💬 CHAT
+                <a href="/syncro lab/pages/booking.php" class="btn btn--outline" style="width: 100%; justify-content: center;">
+                    🛠️ BOOK SERVICE
                 </a>
                 <?php if ($userRole === 'hq_admin' || $userRole === 'branch_manager'): ?>
                     <a href="/syncro lab/pages/admin/dashboard.php" class="btn btn--outline" style="width: 100%; justify-content: center;">

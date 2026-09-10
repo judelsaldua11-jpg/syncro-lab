@@ -1,7 +1,0 @@
-admin@syncrolab.com - 1@Password
-manager.north@syncrolab.com - 1@Password
-manager.downtown@syncrolab.com - 1@Password
-manager.manila@syncrolab.com - 1@Password
-manager.nuvali@syncrolab.com - 1@Password
-manager.girona@syncrolab.com - 1@Password
-customer@example.com - 1@Password
