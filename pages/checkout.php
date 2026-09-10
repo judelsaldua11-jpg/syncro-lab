@@ -27,6 +27,12 @@ if (empty($cartItems)) {
 // Get all branches (active)
 $branches = getBranches();
 
+// Get saved user addresses
+$userAddresses = getUserAddresses($userId);
+$defaultAddress = getDefaultUserAddress($userId);
+$initialAddressText = $defaultAddress ? $defaultAddress['address_line'] : ($_SESSION['user_address'] ?? '');
+
+
 // For each product, get stock per branch
 $productStock = [];
 foreach ($cartItems as $item) {
@@ -111,12 +117,61 @@ include __DIR__ . '/../src/Views/layouts/header.php';
 
                 <!-- Shipping Address & Payment -->
                 <div style="background: #fff; border-radius: var(--radius); border: 1px solid var(--gray); padding: 24px; box-shadow: var(--shadow);">
-                    <h2 style="font-family: var(--font-heading); font-size: 20px; margin-bottom: 16px;">Shipping Details</h2>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+                        <h2 style="font-family: var(--font-heading); font-size: 20px; margin: 0; text-transform: uppercase;">Shipping Details</h2>
+                        <a href="profile.php?tab=addresses" target="_blank" style="font-size: 13px; color: var(--green); font-weight: 700;">
+                            ⚙️ Manage Preseted Addresses
+                        </a>
+                    </div>
+
+                    <?php if (!empty($userAddresses)): ?>
+                        <div style="margin-bottom: 20px;">
+                            <label style="font-weight: 700; display: block; margin-bottom: 8px; font-size: 14px;">Select from your Preseted Addresses:</label>
+                            <div style="display: grid; gap: 10px;">
+                                <?php foreach ($userAddresses as $idx => $uAddr): 
+                                    $isSelected = ($defaultAddress && $defaultAddress['id'] == $uAddr['id']) || (!$defaultAddress && $idx === 0);
+                                ?>
+                                    <label style="display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; border: 2px solid <?= $isSelected ? 'var(--green)' : 'var(--gray)' ?>; border-radius: var(--radius); cursor: pointer; background: <?= $isSelected ? '#f9fdf2' : '#fff' ?>; transition: all 0.2s ease;" class="preset-address-option">
+                                        <input type="radio" name="selected_preset_address" value="<?= $uAddr['id'] ?>" <?= $isSelected ? 'checked' : '' ?>
+                                               data-address="<?= htmlspecialchars($uAddr['address_line'], ENT_QUOTES) ?>"
+                                               data-recipient="<?= htmlspecialchars($uAddr['recipient_name'], ENT_QUOTES) ?>"
+                                               data-phone="<?= htmlspecialchars($uAddr['phone'], ENT_QUOTES) ?>"
+                                               onchange="selectPresetAddress(this)"
+                                               style="margin-top: 3px; accent-color: var(--green);">
+                                        <div style="flex: 1;">
+                                            <div style="display: flex; align-items: center; gap: 8px;">
+                                                <strong style="font-size: 15px;"><?= htmlspecialchars($uAddr['label']) ?></strong>
+                                                <?php if ((int)$uAddr['is_default'] === 1): ?>
+                                                    <span style="background: var(--green); color: var(--dark); font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 10px; text-transform: uppercase;">Default</span>
+                                                <?php endif; ?>
+                                            </div>
+                                            <p style="font-size: 13px; color: var(--dark); margin: 2px 0;">
+                                                <strong>Recipient:</strong> <?= htmlspecialchars($uAddr['recipient_name']) ?> (<?= htmlspecialchars($uAddr['phone']) ?>)
+                                            </p>
+                                            <p style="font-size: 13px; color: var(--gray-dark); margin: 2px 0;">
+                                                <?= htmlspecialchars($uAddr['address_line']) ?>
+                                            </p>
+                                        </div>
+                                    </label>
+                                <?php endforeach; ?>
+
+                                <label style="display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; border: 2px solid var(--gray); border-radius: var(--radius); cursor: pointer; background: #fff; transition: all 0.2s ease;" class="preset-address-option">
+                                    <input type="radio" name="selected_preset_address" value="custom" onchange="selectPresetAddress(this)" style="margin-top: 3px; accent-color: var(--green);">
+                                    <div style="flex: 1;">
+                                        <strong style="font-size: 15px;">Enter a different shipping address</strong>
+                                        <p style="font-size: 13px; color: var(--gray-dark); margin: 2px 0;">Use a one-time custom delivery address</p>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+                    <?php endif; ?>
+
                     <div style="display: grid; gap: 16px;">
                         <div>
-                            <label for="shipping_address" style="font-weight: 700; display: block; margin-bottom: 4px;">Shipping Address *</label>
+                            <label for="shipping_address" style="font-weight: 700; display: block; margin-bottom: 4px;">Delivery Address *</label>
                             <textarea id="shipping_address" name="shipping_address" rows="3" required
-                                      style="width: 100%; padding: 12px; border: 2px solid var(--gray); border-radius: var(--radius); font-size: 16px; font-family: inherit;"><?= htmlspecialchars($_SESSION['user_address'] ?? '') ?></textarea>
+                                      style="width: 100%; padding: 12px; border: 2px solid var(--gray); border-radius: var(--radius); font-size: 16px; font-family: inherit;"><?= htmlspecialchars($initialAddressText) ?></textarea>
+                            <small style="color: var(--gray-dark); font-size: 12px;">This exact address will be permanently preserved on your order record.</small>
                         </div>
                         <div>
                             <label for="payment_method" style="font-weight: 700; display: block; margin-bottom: 4px;">Payment Method *</label>
@@ -136,6 +191,31 @@ include __DIR__ . '/../src/Views/layouts/header.php';
                         </div>
                     </div>
                 </div>
+
+                <script>
+                function selectPresetAddress(radio) {
+                    // Update visual highlight on option cards
+                    document.querySelectorAll('.preset-address-option').forEach(card => {
+                        card.style.borderColor = 'var(--gray)';
+                        card.style.backgroundColor = '#fff';
+                    });
+                    const parentCard = radio.closest('.preset-address-option');
+                    if (parentCard) {
+                        parentCard.style.borderColor = 'var(--green)';
+                        parentCard.style.backgroundColor = '#f9fdf2';
+                    }
+
+                    const textarea = document.getElementById('shipping_address');
+                    if (radio.value === 'custom') {
+                        textarea.value = '';
+                        textarea.focus();
+                    } else {
+                        const addrText = radio.getAttribute('data-address') || '';
+                        textarea.value = addrText;
+                    }
+                }
+                </script>
+
 
                 <div style="display: flex; gap: 16px; justify-content: flex-end;">
                     <a href="cart.php" class="btn btn--outline" style="height: 48px; font-size: 16px; padding: 0 32px;">Back to Cart</a>

@@ -259,3 +259,32 @@ function validateProductInput(array $post): array
         ]
     ];
 }
+
+function validateAddressInput(array $post): array
+{
+    $label = trim($post['label'] ?? '');
+    $recipientName = trim($post['recipient_name'] ?? '');
+    $phone = trim($post['phone'] ?? '');
+    $addressLine = trim($post['address_line'] ?? '');
+
+    $errors = array_filter([
+        validateRequired($label, 'Address Label'),
+        validateRequired($recipientName, 'Recipient Name'),
+        validateRequired($phone, 'Contact Phone Number'),
+        validatePhone($phone),
+        validateRequired($addressLine, 'Street Address / Full Address'),
+    ]);
+
+    $errors = array_values($errors);
+
+    return [
+        'errors' => $errors,
+        'data' => [
+            'label' => htmlspecialchars($label),
+            'recipient_name' => htmlspecialchars($recipientName),
+            'phone' => preg_replace('/[^0-9+]/', '', $phone),
+            'address_line' => htmlspecialchars($addressLine),
+            'is_default' => !empty($post['is_default']) ? 1 : 0,
+        ]
+    ];
+}

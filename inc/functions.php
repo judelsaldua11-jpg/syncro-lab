@@ -342,3 +342,35 @@ function logInventoryActivity($pdo, $inventoryId, $productId, $branchId, $action
         $notes
     ]);
 }
+
+// ============================================
+// USER ADDRESS FUNCTIONS
+// ============================================
+
+function getUserAddresses($userId) {
+    $pdo = getConnection();
+    $stmt = $pdo->prepare("SELECT * FROM user_addresses WHERE user_id = ? ORDER BY is_default DESC, id DESC");
+    $stmt->execute([$userId]);
+    return $stmt->fetchAll();
+}
+
+function getUserAddressById($addressId, $userId) {
+    $pdo = getConnection();
+    $stmt = $pdo->prepare("SELECT * FROM user_addresses WHERE id = ? AND user_id = ?");
+    $stmt->execute([$addressId, $userId]);
+    return $stmt->fetch();
+}
+
+function getDefaultUserAddress($userId) {
+    $pdo = getConnection();
+    $stmt = $pdo->prepare("SELECT * FROM user_addresses WHERE user_id = ? AND is_default = 1 LIMIT 1");
+    $stmt->execute([$userId]);
+    $address = $stmt->fetch();
+    if (!$address) {
+        // Fallback to most recent address if no default is explicitly marked
+        $stmt = $pdo->prepare("SELECT * FROM user_addresses WHERE user_id = ? ORDER BY id DESC LIMIT 1");
+        $stmt->execute([$userId]);
+        $address = $stmt->fetch();
+    }
+    return $address ?: null;
+}
