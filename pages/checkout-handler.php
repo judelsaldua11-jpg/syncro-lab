@@ -85,14 +85,32 @@ foreach ($allocations as $productId => $branchAlloc) {
 try {
     $pdo->beginTransaction();
 
-    // Create order (without branch_id, since it's multi-branch)
+    // Determine primary branch_id from allocations (if single branch or first selected branch)
+    $primaryBranchId = null;
+    $uniqueBranchIds = [];
+    foreach ($allocations as $prodAlloc) {
+        foreach ($prodAlloc as $bId => $q) {
+            if ($q > 0) {
+                $uniqueBranchIds[$bId] = true;
+            }
+        }
+    }
+    $branchKeys = array_keys($uniqueBranchIds);
+    if (count($branchKeys) === 1) {
+        $primaryBranchId = $branchKeys[0];
+    } elseif (count($branchKeys) > 1) {
+        // Multi-branch order: Use first allocated branch as primary fulfillment reference
+        $primaryBranchId = $branchKeys[0];
+    }
+
+    // Create order with primary branch reference (or NULL if multi-branch)
     $stmt = $pdo->prepare("
-        INSERT INTO orders (user_id, total_amount, status, payment_method, shipping_address, notes)
-        VALUES (?, ?, 'pending', ?, ?, ?)
+        INSERT INTO orders (user_id, branch_id, total_amount, status, payment_method, shipping_address, notes)
+        VALUES (?, ?, ?, 'pending', ?, ?, ?)
     ");
     $totalAmount = getCartTotal($pdo, $cartId);
-    $notes = "Multi-branch order. Items allocated to branches.";
-    $stmt->execute([$userId, $totalAmount, $paymentMethod, $shippingAddress, $notes]);
+    $notes = count($branchKeys) > 1 ? "Multi-branch order. Items allocated across multiple branches." : "Standard order.";
+    $stmt->execute([$userId, $primaryBranchId, $totalAmount, $paymentMethod, $shippingAddress, $notes]);
     $orderId = $pdo->lastInsertId();
 
     // Reserve inventory and create order_items
@@ -102,32 +120,35 @@ try {
     ");
 
     foreach ($allocations as $productId => $branchAlloc) {
+        // Fetch current product price once per product
+        $priceStmt = $pdo->prepare("SELECT price FROM products WHERE id = ?");
+        $priceStmt->execute([$productId]);
+        $price = $priceStmt->fetchColumn() ?: 0;
+
         foreach ($branchAlloc as $branchId => $qty) {
-            // Get specific inventory IDs for this branch and product, limited to qty
+            $qty = (int)$qty;
+            if ($qty <= 0) continue;
+
+            // Get specific inventory IDs for this branch and product, using explicit integer bind for LIMIT
             $stmt = $pdo->prepare("
                 SELECT id FROM inventory 
-                WHERE product_id = ? AND branch_id = ? AND status = 'in_stock'
-                LIMIT ?
+                WHERE product_id = :product_id AND branch_id = :branch_id AND status = 'in_stock'
+                LIMIT :limit_qty
             ");
-            $stmt->execute([$productId, $branchId, $qty]);
+            $stmt->bindValue(':product_id', (int)$productId, PDO::PARAM_INT);
+            $stmt->bindValue(':branch_id', (int)$branchId, PDO::PARAM_INT);
+            $stmt->bindValue(':limit_qty', $qty, PDO::PARAM_INT);
+            $stmt->execute();
             $inventoryIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
             if (count($inventoryIds) < $qty) {
-                throw new Exception("Not enough inventory for product $productId at branch $branchId.");
+                throw new Exception("Inventory stock changed during checkout for one or more items. Please review your branch selections.");
             }
 
             // Reserve (mark as reserved) and create order_items
+            $reserveStmt = $pdo->prepare("UPDATE inventory SET status = 'reserved', reserved_until = DATE_ADD(NOW(), INTERVAL 15 MINUTE) WHERE id = ?");
             foreach ($inventoryIds as $invId) {
-                // Reserve
-                $stmt = $pdo->prepare("UPDATE inventory SET status = 'reserved', reserved_until = DATE_ADD(NOW(), INTERVAL 15 MINUTE) WHERE id = ?");
-                $stmt->execute([$invId]);
-
-                // Get price at sale (current product price)
-                $priceStmt = $pdo->prepare("SELECT price FROM products WHERE id = ?");
-                $priceStmt->execute([$productId]);
-                $price = $priceStmt->fetchColumn();
-
-                // Create order_item
+                $reserveStmt->execute([$invId]);
                 $orderItemStmt->execute([$orderId, $invId, $price, 1]);
             }
         }
@@ -142,8 +163,29 @@ try {
     header("Location: order-success.php?id=" . $orderId);
     exit;
 
-} catch (Exception $e) {
-    $pdo->rollBack();
-    header('Location: checkout.php?error=' . urlencode($e->getMessage()));
+} catch (PDOException $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+    // Check for foreign key or integrity violations and provide user-friendly explanation
+    if ($e->getCode() == '23000') {
+        $userError = "We were unable to complete your checkout due to an invalid branch or inventory assignment. Please check your branch allocations and try again.";
+    } else {
+        $userError = "A database error occurred while processing your order. Please try again or contact customer support.";
+    }
+    header('Location: checkout.php?error=' . urlencode($userError));
     exit;
-}
+} catch (Exception $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+    $rawMsg = $e->getMessage();
+    // Translate technical messages into clean user-friendly messages
+    if (stripos($rawMsg, 'Integrity constraint') !== false || stripos($rawMsg, 'foreign key') !== false) {
+        $userError = "We encountered an issue linking your order to the selected branch. Please reselect your branch quantities and try again.";
+    } else {
+        $userError = $rawMsg;
+    }
+    header('Location: checkout.php?error=' . urlencode($userError));
+    exit;
+}

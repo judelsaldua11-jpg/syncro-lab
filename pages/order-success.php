@@ -161,14 +161,75 @@ include __DIR__ . '/../src/Views/layouts/header.php';
                 </div>
 
                 <!-- Action Buttons -->
-                <div style="grid-column: 1 / -1; display: flex; gap: 16px; justify-content: center; margin-top: 16px;">
+                <div style="grid-column: 1 / -1; display: flex; gap: 16px; justify-content: center; margin-top: 16px; flex-wrap: wrap; align-items: center;">
                     <a href="/syncro lab/pages/shop.php" class="btn btn--green">CONTINUE SHOPPING</a>
                     <a href="/syncro lab/pages/orders.php" class="btn btn--outline">VIEW MY ORDERS</a>
+                    <?php if (in_array($order['status'], ['pending', 'confirmed'])): ?>
+                        <button type="button" onclick="cancelSuccessOrder(<?= (int)$order['order_id'] ?>)" 
+                                style="background: none; border: 1px solid #d9534f; color: #d9534f; padding: 12px 24px; border-radius: var(--radius); font-weight: 700; cursor: pointer; transition: all 0.2s ease;"
+                                onmouseover="this.style.background='#d9534f'; this.style.color='#fff';"
+                                onmouseout="this.style.background='none'; this.style.color='#d9534f';">
+                            CANCEL ORDER
+                        </button>
+                    <?php endif; ?>
                 </div>
 
             </div>
         </div>
     </div>
 </div>
+
+<script>
+async function cancelSuccessOrder(orderId) {
+    const confirmed = await window.SyncroModal.confirm(
+        `Are you sure you want to cancel <strong>Order #${String(orderId).padStart(6, '0')}</strong>?<br><br>All allocated items will immediately return to available branch inventory.`,
+        'CANCEL ORDER',
+        'danger',
+        'CONFIRM CANCELLATION',
+        'KEEP ORDER'
+    );
+    if (!confirmed) return;
+
+    const reason = await window.SyncroModal.prompt(
+        'Optional: Please let us know the reason for cancellation before we process it:',
+        'e.g., Ordered by mistake, wrong delivery address...',
+        'REASON FOR CANCELLATION'
+    );
+    if (reason === null) return;
+
+    fetch('/syncro lab/pages/cancel-order.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: 'order_id=' + encodeURIComponent(orderId) + '&reason=' + encodeURIComponent(reason)
+    })
+    .then(r => r.json())
+    .then(async data => {
+        if (data.success) {
+            await window.SyncroModal.alert(
+                data.message || 'Order successfully cancelled and stock restored.',
+                'ORDER CANCELLED',
+                'success'
+            );
+            window.location.href = '/syncro lab/pages/orders.php';
+        } else {
+            await window.SyncroModal.alert(
+                data.message || 'Unable to cancel order.',
+                'CANCELLATION FAILED',
+                'danger'
+            );
+        }
+    })
+    .catch(async err => {
+        await window.SyncroModal.alert(
+            'Error processing order cancellation. Please check your connection and try again.',
+            'SYSTEM ERROR',
+            'danger'
+        );
+        console.error(err);
+    });
+}
+</script>
 
 <?php include __DIR__ . '/../src/Views/layouts/footer.php'; ?>

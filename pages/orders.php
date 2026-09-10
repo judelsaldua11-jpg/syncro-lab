@@ -150,6 +150,21 @@ include __DIR__ . '/../src/Views/layouts/header.php';
         color: var(--dark);
         border-color: var(--green);
     }
+    .cancel-order-btn {
+        background: none;
+        border: 1px solid #d9534f;
+        border-radius: var(--radius);
+        padding: 4px 12px;
+        font-size: 12px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        color: #d9534f;
+        font-weight: 600;
+    }
+    .cancel-order-btn:hover {
+        background: #d9534f;
+        color: #fff;
+    }
 </style>
 
 <div style="padding: 40px 0 60px; color: var(--dark); min-height: 60vh; background: var(--light);">
@@ -267,16 +282,21 @@ include __DIR__ . '/../src/Views/layouts/header.php';
                         <?php endif; ?>
 
                         <!-- Action Buttons -->
-                        <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--gray);">
+                        <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--gray); align-items: center;">
                             <button class="order-items-toggle" data-order-id="<?= $order['order_id'] ?>" onclick="toggleOrderItems(this)">
                                 📋 View Items
                             </button>
                             <button class="reorder-btn" onclick="reorder('<?= $order['order_id'] ?>')">
                                 🔄 Reorder
                             </button>
-                            <a href="/syncro lab/pages/order-success.php?id=<?= $order['order_id'] ?>" style="color: var(--gray-dark); font-size: 14px; text-decoration: none; padding: 4px 12px; border: 1px solid var(--gray); border-radius: var(--radius);">
+                            <a href="/syncro lab/pages/order-success.php?id=<?= $order['order_id'] ?>" style="color: var(--gray-dark); font-size: 12px; text-decoration: none; padding: 4px 12px; border: 1px solid var(--gray); border-radius: var(--radius); line-height: 1.5;">
                                 📄 View Order
                             </a>
+                            <?php if (in_array($order['status'], ['pending', 'confirmed'])): ?>
+                                <button class="cancel-order-btn" onclick="cancelUserOrder('<?= $order['order_id'] ?>')">
+                                    ✕ Cancel Order
+                                </button>
+                            <?php endif; ?>
                         </div>
 
                         <!-- Order Items Detail (Toggled) -->
@@ -332,8 +352,15 @@ function toggleOrderItems(btn) {
 }
 
 // Reorder functionality
-function reorder(orderId) {
-    if (!confirm('Add all items from this order to your cart?')) return;
+async function reorder(orderId) {
+    const confirmed = await window.SyncroModal.confirm(
+        'Are you sure you want to add all items from this order back into your shopping cart?',
+        'REORDER ITEMS',
+        'info',
+        'ADD TO CART',
+        'CANCEL'
+    );
+    if (!confirmed) return;
     
     fetch('/syncro lab/pages/reorder.php', {
         method: 'POST',
@@ -343,16 +370,70 @@ function reorder(orderId) {
         body: 'order_id=' + encodeURIComponent(orderId)
     })
     .then(response => response.json())
-    .then(data => {
+    .then(async data => {
         if (data.success) {
             window.location.href = '/syncro lab/pages/cart.php';
         } else {
-            alert('Error: ' + data.message);
+            await window.SyncroModal.alert(data.message || 'Failed to reorder items.', 'ERROR', 'danger');
         }
     })
-    .catch(error => {
-        alert('Error reordering items. Please try again.');
+    .catch(async error => {
+        await window.SyncroModal.alert('Error reordering items. Please try again.', 'NETWORK ERROR', 'danger');
         console.error('Reorder error:', error);
+    });
+}
+
+// Cancel Order functionality
+async function cancelUserOrder(orderId) {
+    const confirmed = await window.SyncroModal.confirm(
+        `Are you sure you want to cancel <strong>Order #${String(orderId).padStart(6, '0')}</strong>?<br><br>All reserved products will immediately be returned to stock at their source branch.`,
+        'CANCEL ORDER',
+        'danger',
+        'CONFIRM CANCELLATION',
+        'KEEP ORDER'
+    );
+    if (!confirmed) return;
+
+    const reason = await window.SyncroModal.prompt(
+        'Please share an optional reason for cancelling this order before we proceed:',
+        'e.g., Changed mind, ordered wrong item...',
+        'REASON FOR CANCELLATION'
+    );
+    if (reason === null) {
+        return; // User clicked cancel
+    }
+
+    fetch('/syncro lab/pages/cancel-order.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: 'order_id=' + encodeURIComponent(orderId) + '&reason=' + encodeURIComponent(reason)
+    })
+    .then(response => response.json())
+    .then(async data => {
+        if (data.success) {
+            await window.SyncroModal.alert(
+                data.message || 'Order has been cancelled and stock has been restored.',
+                'ORDER CANCELLED',
+                'success'
+            );
+            window.location.reload();
+        } else {
+            await window.SyncroModal.alert(
+                data.message || 'Unable to cancel order.',
+                'CANCELLATION FAILED',
+                'danger'
+            );
+        }
+    })
+    .catch(async error => {
+        await window.SyncroModal.alert(
+            'A network or server error occurred while processing your cancellation. Please try again.',
+            'SYSTEM ERROR',
+            'danger'
+        );
+        console.error('Cancel order error:', error);
     });
 }
 </script>

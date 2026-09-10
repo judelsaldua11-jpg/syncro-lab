@@ -43,8 +43,8 @@ $badgeMap = [
                                 <span class="category-tag" aria-label="Category">
                                     <?= $badgeMap[$product['id']] ?? '[FEATURED]' ?>
                                 </span>
-                                <span class="stock-tag" aria-label="Stock Status">
-                                    IN STOCK: <?= (int) $product['total_stock'] ?>
+                                <span class="stock-tag" aria-label="Stock Status" <?= (int)$product['total_stock'] === 0 ? 'style="color: #d9534f;"' : '' ?>>
+                                    <?= (int)$product['total_stock'] > 0 ? 'IN STOCK: ' . (int)$product['total_stock'] : 'OUT OF STOCK' ?>
                                 </span>
                             </div>
                             <div class="hardware-image">

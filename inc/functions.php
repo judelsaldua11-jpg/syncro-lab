@@ -373,4 +373,127 @@ function getDefaultUserAddress($userId) {
         $address = $stmt->fetch();
     }
     return $address ?: null;
-}
+}
+
+// ============================================
+// ORDER CANCELLATION & STOCK RESTORATION
+// ============================================
+
+/**
+ * Cancels an order and releases/restores its reserved/sold inventory back to 'in_stock'
+ * at its original source branch.
+ *
+ * @param PDO $pdo
+ * @param int $orderId
+ * @param int|null $userId Optional: user ID for customer verification (null for admin/manager override)
+ * @param string $cancellationReason
+ * @return array ['success' => bool, 'message' => string]
+ */
+function cancelOrder($pdo, $orderId, $userId = null, $cancellationReason = 'Cancelled by user') {
+    $orderId = (int)$orderId;
+    if ($orderId <= 0) {
+        return ['success' => false, 'message' => 'Invalid order ID.'];
+    }
+
+    try {
+        if (!$pdo->inTransaction()) {
+            $pdo->beginTransaction();
+        }
+
+        // Lock order row for update
+        $stmt = $pdo->prepare("SELECT id, user_id, status FROM orders WHERE id = ? FOR UPDATE");
+        $stmt->execute([$orderId]);
+        $order = $stmt->fetch();
+
+        if (!$order) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            return ['success' => false, 'message' => 'Order not found.'];
+        }
+
+        // Verify ownership if userId is supplied
+        if ($userId !== null && (int)$order['user_id'] !== (int)$userId) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            return ['success' => false, 'message' => 'You do not have permission to cancel this order.'];
+        }
+
+        $currentStatus = $order['status'];
+        if ($currentStatus === 'cancelled') {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            return ['success' => false, 'message' => 'Order is already cancelled.'];
+        }
+
+        // Customers can only cancel if pending or confirmed; shipped/delivered cannot be self-cancelled
+        if ($userId !== null && !in_array($currentStatus, ['pending', 'confirmed'])) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            return ['success' => false, 'message' => 'Orders that are already shipped or delivered cannot be cancelled.'];
+        }
+
+        // Find all inventory items tied to this order via order_items
+        $itemStmt = $pdo->prepare("
+            SELECT oi.id AS item_id, oi.inventory_id, oi.quantity,
+                   i.product_id, i.branch_id, i.status AS inv_status
+            FROM order_items oi
+            LEFT JOIN inventory i ON oi.inventory_id = i.id
+            WHERE oi.order_id = ?
+            FOR UPDATE
+        ");
+        $itemStmt->execute([$orderId]);
+        $items = $itemStmt->fetchAll();
+
+        $updateInvStmt = $pdo->prepare("
+            UPDATE inventory 
+            SET status = 'in_stock', 
+                reserved_until = NULL, 
+                updated_at = NOW() 
+            WHERE id = ?
+        ");
+
+        $logStmt = $pdo->prepare("
+            INSERT INTO inventory_logs (inventory_id, product_id, branch_id, user_id, action, old_status, new_status, quantity, notes)
+            VALUES (?, ?, ?, ?, 'release', ?, 'in_stock', ?, ?)
+        ");
+
+        $activeUserId = $_SESSION['user_id'] ?? $order['user_id'];
+
+        foreach ($items as $item) {
+            $invId = $item['inventory_id'];
+            if (!$invId) continue;
+
+            $oldInvStatus = $item['inv_status'];
+            // Only restore if it's currently reserved or sold
+            if (in_array($oldInvStatus, ['reserved', 'sold'])) {
+                $updateInvStmt->execute([$invId]);
+
+                $note = "Stock released back to branch #{$item['branch_id']} due to order #$orderId cancellation ($cancellationReason)";
+                $logStmt->execute([
+                    $invId,
+                    $item['product_id'],
+                    $item['branch_id'],
+                    $activeUserId,
+                    $oldInvStatus,
+                    $item['quantity'] ?? 1,
+                    $note
+                ]);
+            }
+        }
+
+        // Update order status to cancelled
+        $updateOrderStmt = $pdo->prepare("
+            UPDATE orders 
+            SET status = 'cancelled', 
+                notes = CONCAT(COALESCE(notes, ''), '\n[Cancellation] ', ?), 
+                updated_at = NOW() 
+            WHERE id = ?
+        ");
+        $updateOrderStmt->execute([$cancellationReason, $orderId]);
+
+        $pdo->commit();
+        return ['success' => true, 'message' => 'Order #' . $orderId . ' has been cancelled and stock restored to inventory.'];
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        return ['success' => false, 'message' => 'Failed to cancel order: ' . $e->getMessage()];
+    }
+}
+

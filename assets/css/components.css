@@ -306,3 +306,185 @@ body.cart-open {
     text-align: center;
     margin-top: 12px;
 }
+
+/* ============================================================
+   SYNCRO LAB SYSTEM MODAL & ALERTS
+   ============================================================ */
+.syncro-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 10500;
+    background-color: rgba(18, 23, 27, 0.72);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease;
+}
+
+.syncro-modal-backdrop.is-active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.syncro-modal-dialog {
+    background: #ffffff;
+    width: 100%;
+    max-width: 480px;
+    border-radius: var(--radius);
+    border: 2px solid var(--gray);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+    overflow: hidden;
+    transform: scale(0.95) translateY(10px);
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    display: flex;
+    flex-direction: column;
+}
+
+.syncro-modal-backdrop.is-active .syncro-modal-dialog {
+    transform: scale(1) translateY(0);
+}
+
+.syncro-modal-header {
+    padding: 24px 28px 16px;
+    border-bottom: 1px solid rgba(18, 23, 27, 0.1);
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+}
+
+.syncro-modal-eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    color: var(--gray-dark);
+    text-transform: uppercase;
+    margin-bottom: 4px;
+}
+
+.syncro-modal-title {
+    font-family: var(--font-heading);
+    font-size: 22px;
+    text-transform: uppercase;
+    color: var(--dark);
+    margin: 0;
+}
+
+.syncro-modal-close {
+    background: none;
+    border: 0;
+    font-size: 28px;
+    cursor: pointer;
+    color: var(--gray-dark);
+    line-height: 1;
+    padding: 0 4px;
+    transition: color 0.15s ease;
+}
+
+.syncro-modal-close:hover {
+    color: var(--dark);
+}
+
+.syncro-modal-body {
+    padding: 24px 28px;
+    color: var(--dark);
+    font-size: 15px;
+    line-height: 1.55;
+}
+
+.syncro-modal-icon-wrap {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    margin-bottom: 16px;
+}
+.syncro-modal-icon-wrap.danger {
+    background: #ffebee;
+    color: #d32f2f;
+    border: 1px solid rgba(211, 47, 47, 0.3);
+}
+.syncro-modal-icon-wrap.success {
+    background: #e8f5e9;
+    color: #2e7d32;
+    border: 1px solid rgba(46, 125, 50, 0.3);
+}
+.syncro-modal-icon-wrap.info {
+    background: #e3f2fd;
+    color: #1976d2;
+    border: 1px solid rgba(25, 118, 210, 0.3);
+}
+
+.syncro-modal-input {
+    width: 100%;
+    margin-top: 14px;
+    padding: 10px 14px;
+    border: 1.5px solid var(--gray);
+    border-radius: var(--radius);
+    font-size: 14px;
+    background: #fff;
+    color: var(--dark);
+    font-family: inherit;
+    transition: border-color 0.2s ease;
+}
+
+.syncro-modal-input:focus {
+    outline: none;
+    border-color: var(--green);
+}
+
+.syncro-modal-footer {
+    padding: 16px 28px 24px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    border-top: 1px solid rgba(18, 23, 27, 0.08);
+}
+
+.syncro-modal-btn {
+    padding: 10px 20px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 2px solid transparent;
+}
+
+.syncro-modal-btn.btn-cancel {
+    background: #fff;
+    border-color: var(--gray);
+    color: var(--gray-dark);
+}
+.syncro-modal-btn.btn-cancel:hover {
+    border-color: var(--dark);
+    color: var(--dark);
+}
+
+.syncro-modal-btn.btn-confirm-danger {
+    background: #d9534f;
+    border-color: #d9534f;
+    color: #fff;
+}
+.syncro-modal-btn.btn-confirm-danger:hover {
+    background: #c9302c;
+    border-color: #c9302c;
+}
+
+.syncro-modal-btn.btn-confirm-primary {
+    background: var(--green);
+    border-color: var(--green);
+    color: var(--dark);
+}
+.syncro-modal-btn.btn-confirm-primary:hover {
+    opacity: 0.9;
+}

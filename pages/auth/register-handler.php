@@ -24,11 +24,12 @@ $hashedPassword = hashPassword($data['password']);
 $pdo = getConnection();
 
 try {
-    $stmt = $pdo->prepare("INSERT INTO users (email, password_hash, full_name, phone) VALUES (?, ?, ?, ?)");
+    // Role is strictly enforced as 'customer' for all public registrations
+    $stmt = $pdo->prepare("INSERT INTO users (email, password_hash, full_name, phone, role) VALUES (?, ?, ?, ?, 'customer')");
     $stmt->execute([$data['email'], $hashedPassword, $data['full_name'], $data['phone']]);
     $userId = $pdo->lastInsertId();
 
-    // Auto-login after registration
+    // Auto-login after registration with customer role
     $_SESSION['user_id'] = $userId;
     $_SESSION['user_email'] = $data['email'];
     $_SESSION['user_name'] = $data['full_name'];

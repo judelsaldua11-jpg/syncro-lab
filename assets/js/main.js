@@ -177,3 +177,193 @@ document.addEventListener('keydown', (event) => {
     header.addEventListener('mouseenter', () => clearTimeout(hideTimeout));
     header.addEventListener('mouseleave', startHideTimer);
 });
+
+/* ============================================================
+   SYNCRO LAB CUSTOM SYSTEM MODAL SYSTEM (Alert, Confirm, Prompt)
+   ============================================================ */
+window.SyncroModal = (function() {
+    let activeModal = null;
+
+    function createBackdrop() {
+        const existing = document.getElementById('syncro-system-modal');
+        if (existing) return existing;
+
+        const backdrop = document.createElement('div');
+        backdrop.id = 'syncro-system-modal';
+        backdrop.className = 'syncro-modal-backdrop';
+        backdrop.innerHTML = `
+            <div class="syncro-modal-dialog" role="dialog" aria-modal="true">
+                <div class="syncro-modal-header">
+                    <div>
+                        <div class="syncro-modal-eyebrow" id="syncro-modal-eyebrow">SYNCRO LAB</div>
+                        <h3 class="syncro-modal-title" id="syncro-modal-title">NOTIFICATION</h3>
+                    </div>
+                    <button type="button" class="syncro-modal-close" data-syncro-close aria-label="Close">&times;</button>
+                </div>
+                <div class="syncro-modal-body">
+                    <div id="syncro-modal-icon"></div>
+                    <div id="syncro-modal-message"></div>
+                    <div id="syncro-modal-input-container"></div>
+                </div>
+                <div class="syncro-modal-footer" id="syncro-modal-footer"></div>
+            </div>
+        `;
+        document.body.appendChild(backdrop);
+        return backdrop;
+    }
+
+    function close() {
+        const backdrop = document.getElementById('syncro-system-modal');
+        if (backdrop) {
+            backdrop.classList.remove('is-active');
+        }
+        if (activeModal && activeModal.reject) {
+            activeModal.reject();
+        }
+        activeModal = null;
+    }
+
+    function show({
+        title = 'NOTIFICATION',
+        eyebrow = 'SYNCRO LAB',
+        message = '',
+        type = 'info', // 'danger', 'success', 'info'
+        showInput = false,
+        inputPlaceholder = '',
+        inputValue = '',
+        confirmText = 'OK',
+        cancelText = 'Cancel',
+        isConfirm = false
+    }) {
+        return new Promise((resolve) => {
+            const backdrop = createBackdrop();
+            const titleEl = backdrop.querySelector('#syncro-modal-title');
+            const eyebrowEl = backdrop.querySelector('#syncro-modal-eyebrow');
+            const iconEl = backdrop.querySelector('#syncro-modal-icon');
+            const messageEl = backdrop.querySelector('#syncro-modal-message');
+            const inputContainer = backdrop.querySelector('#syncro-modal-input-container');
+            const footerEl = backdrop.querySelector('#syncro-modal-footer');
+            const closeBtn = backdrop.querySelector('[data-syncro-close]');
+
+            titleEl.textContent = title;
+            eyebrowEl.textContent = eyebrow;
+            messageEl.innerHTML = message;
+
+            // Icon
+            let iconSymbol = 'ℹ️';
+            if (type === 'danger') iconSymbol = '⚠️';
+            else if (type === 'success') iconSymbol = '✓';
+            iconEl.className = 'syncro-modal-icon-wrap ' + type;
+            iconEl.innerHTML = `<span>${iconSymbol}</span>`;
+
+            // Input (if prompt)
+            inputContainer.innerHTML = '';
+            let inputField = null;
+            if (showInput) {
+                inputField = document.createElement('input');
+                inputField.type = 'text';
+                inputField.className = 'syncro-modal-input';
+                inputField.placeholder = inputPlaceholder;
+                inputField.value = inputValue;
+                inputContainer.appendChild(inputField);
+            }
+
+            // Buttons
+            footerEl.innerHTML = '';
+            if (isConfirm || showInput) {
+                const cancelBtn = document.createElement('button');
+                cancelBtn.type = 'button';
+                cancelBtn.className = 'syncro-modal-btn btn-cancel';
+                cancelBtn.textContent = cancelText;
+                cancelBtn.onclick = () => {
+                    backdrop.classList.remove('is-active');
+                    resolve(showInput ? null : false);
+                };
+                footerEl.appendChild(cancelBtn);
+            }
+
+            const confirmBtn = document.createElement('button');
+            confirmBtn.type = 'button';
+            confirmBtn.className = 'syncro-modal-btn ' + (type === 'danger' ? 'btn-confirm-danger' : 'btn-confirm-primary');
+            confirmBtn.textContent = confirmText;
+            confirmBtn.onclick = () => {
+                backdrop.classList.remove('is-active');
+                if (showInput) {
+                    resolve(inputField ? inputField.value : '');
+                } else if (isConfirm) {
+                    resolve(true);
+                } else {
+                    resolve(true);
+                }
+            };
+            footerEl.appendChild(confirmBtn);
+
+            closeBtn.onclick = () => {
+                backdrop.classList.remove('is-active');
+                resolve(showInput ? null : false);
+            };
+
+            backdrop.onclick = (e) => {
+                if (e.target === backdrop) {
+                    backdrop.classList.remove('is-active');
+                    resolve(showInput ? null : false);
+                }
+            };
+
+            // Keyboard Enter and Escape
+            const keyHandler = (e) => {
+                if (e.key === 'Escape') {
+                    document.removeEventListener('keydown', keyHandler);
+                    backdrop.classList.remove('is-active');
+                    resolve(showInput ? null : false);
+                } else if (e.key === 'Enter' && showInput && document.activeElement === inputField) {
+                    document.removeEventListener('keydown', keyHandler);
+                    backdrop.classList.remove('is-active');
+                    resolve(inputField.value);
+                }
+            };
+            document.addEventListener('keydown', keyHandler);
+
+            backdrop.classList.add('is-active');
+
+            if (inputField) {
+                setTimeout(() => inputField.focus(), 100);
+            } else {
+                confirmBtn.focus();
+            }
+        });
+    }
+
+    return {
+        alert: function(message, title = 'NOTIFICATION', type = 'info') {
+            return show({
+                title,
+                message,
+                type,
+                isConfirm: false,
+                confirmText: 'CONTINUE'
+            });
+        },
+        confirm: function(message, title = 'CONFIRM ACTION', type = 'danger', confirmText = 'CONFIRM', cancelText = 'KEEP ORDER') {
+            return show({
+                title,
+                message,
+                type,
+                isConfirm: true,
+                confirmText,
+                cancelText
+            });
+        },
+        prompt: function(message, placeholder = '', title = 'REASON FOR CANCELLATION', type = 'info') {
+            return show({
+                title,
+                message,
+                type,
+                showInput: true,
+                inputPlaceholder: placeholder,
+                confirmText: 'PROCEED',
+                cancelText: 'CANCEL'
+            });
+        }
+    };
+})();

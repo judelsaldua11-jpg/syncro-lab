@@ -46,12 +46,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 }
             }
 
-            if (!empty($trackingNumber)) {
-                $stmt = $pdo->prepare("UPDATE orders SET status = ?, tracking_number = ?, updated_at = NOW() WHERE id = ?");
-                $stmt->execute([$newStatus, $trackingNumber, $orderId]);
+            if ($newStatus === 'cancelled') {
+                $cancelResult = cancelOrder($pdo, $orderId, null, 'Cancelled by admin (' . ($_SESSION['user_name'] ?? 'Admin') . ')');
+                if (!$cancelResult['success']) {
+                    throw new Exception($cancelResult['message']);
+                }
+                if (!empty($trackingNumber)) {
+                    $stmt = $pdo->prepare("UPDATE orders SET tracking_number = ?, updated_at = NOW() WHERE id = ?");
+                    $stmt->execute([$trackingNumber, $orderId]);
+                }
             } else {
-                $stmt = $pdo->prepare("UPDATE orders SET status = ?, updated_at = NOW() WHERE id = ?");
-                $stmt->execute([$newStatus, $orderId]);
+                if (!empty($trackingNumber)) {
+                    $stmt = $pdo->prepare("UPDATE orders SET status = ?, tracking_number = ?, updated_at = NOW() WHERE id = ?");
+                    $stmt->execute([$newStatus, $trackingNumber, $orderId]);
+                } else {
+                    $stmt = $pdo->prepare("UPDATE orders SET status = ?, updated_at = NOW() WHERE id = ?");
+                    $stmt->execute([$newStatus, $orderId]);
+                }
             }
 
             $message = "Order #$orderId status updated to " . ucfirst($newStatus) . " successfully.";
