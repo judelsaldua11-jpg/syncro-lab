@@ -176,12 +176,64 @@ include __DIR__ . '/../src/Views/layouts/header.php';
                         <div>
                             <label for="payment_method" style="font-weight: 700; display: block; margin-bottom: 4px;">Payment Method *</label>
                             <select id="payment_method" name="payment_method" required
-                                    style="width: 100%; padding: 12px; border: 2px solid var(--gray); border-radius: var(--radius); font-size: 16px; background: #fff;">
+                                    style="width: 100%; padding: 12px; border: 2px solid var(--gray); border-radius: var(--radius); font-size: 16px; background: #fff;"
+                                    onchange="onPaymentMethodChange(this.value)">
                                 <option value="cash_on_delivery">Cash on Delivery</option>
                                 <option value="credit_card">Credit Card</option>
                                 <option value="gcash">GCash</option>
                                 <option value="paymaya">PayMaya</option>
                             </select>
+                        </div>
+
+                        <!-- COD Notice -->
+                        <div id="codNotice" style="background: #fff8e1; border: 1px solid #f9a825; border-radius: var(--radius); padding: 14px 18px; font-size: 14px; color: #6d4c00;">
+                            💵 <strong>Cash on Delivery:</strong> Pay in cash when your order arrives at your delivery address. No payment details needed now.
+                        </div>
+
+                        <!-- E-Wallet Section (GCash / PayMaya) -->
+                        <div id="walletSection" style="display: none;">
+                            <label id="walletLabel" for="wallet_number" style="font-weight: 700; display: block; margin-bottom: 6px; font-size: 14px;">
+                                GCash Mobile Number
+                            </label>
+                            <input type="tel" id="wallet_number" name="wallet_number"
+                                   placeholder="09XXXXXXXXX" maxlength="11"
+                                   style="width: 100%; padding: 12px; border: 2px solid var(--gray); border-radius: var(--radius); font-size: 16px; box-sizing: border-box;"
+                                   oninput="this.value = this.value.replace(/[^0-9]/g, '')">
+                            <small style="color: var(--gray-dark); font-size: 12px;">Enter the 11-digit mobile number linked to your e-wallet.</small>
+                        </div>
+
+                        <!-- Credit Card Section -->
+                        <div id="cardSection" style="display: none;">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                                <div style="grid-column: 1 / -1;">
+                                    <label style="font-weight: 700; display: block; margin-bottom: 6px; font-size: 14px;">Cardholder Name</label>
+                                    <input type="text" id="card_name" name="card_name"
+                                           placeholder="Name on card"
+                                           style="width: 100%; padding: 12px; border: 2px solid var(--gray); border-radius: var(--radius); font-size: 15px; box-sizing: border-box;">
+                                </div>
+                                <div style="grid-column: 1 / -1;">
+                                    <label style="font-weight: 700; display: block; margin-bottom: 6px; font-size: 14px;">Card Number</label>
+                                    <input type="text" id="card_number" name="card_number"
+                                           placeholder="•••• •••• •••• ••••" maxlength="19"
+                                           style="width: 100%; padding: 12px; border: 2px solid var(--gray); border-radius: var(--radius); font-size: 16px; letter-spacing: 2px; box-sizing: border-box;"
+                                           oninput="formatCardNumber(this)">
+                                </div>
+                                <div>
+                                    <label style="font-weight: 700; display: block; margin-bottom: 6px; font-size: 14px;">Expiry (MM/YY)</label>
+                                    <input type="text" id="card_expiry" name="card_expiry"
+                                           placeholder="MM/YY" maxlength="5"
+                                           style="width: 100%; padding: 12px; border: 2px solid var(--gray); border-radius: var(--radius); font-size: 15px; box-sizing: border-box;"
+                                           oninput="formatCardExpiry(this)">
+                                </div>
+                                <div>
+                                    <label style="font-weight: 700; display: block; margin-bottom: 6px; font-size: 14px;">CVV</label>
+                                    <input type="password" id="card_cvv" name="card_cvv"
+                                           placeholder="•••" maxlength="4"
+                                           style="width: 100%; padding: 12px; border: 2px solid var(--gray); border-radius: var(--radius); font-size: 15px; box-sizing: border-box;"
+                                           oninput="this.value = this.value.replace(/[^0-9]/g, '')">
+                                </div>
+                            </div>
+                            <small style="color: var(--gray-dark); font-size: 12px; margin-top: 6px; display: block;">🔒 Your card details are processed securely.</small>
                         </div>
                         <div>
                             <label style="font-weight: 700; display: flex; align-items: center; gap: 8px; cursor: pointer;">
@@ -214,6 +266,84 @@ include __DIR__ . '/../src/Views/layouts/header.php';
                         textarea.value = addrText;
                     }
                 }
+
+                // ── Payment method show/hide logic ──
+                function onPaymentMethodChange(method) {
+                    const codNotice     = document.getElementById('codNotice');
+                    const walletSection = document.getElementById('walletSection');
+                    const cardSection   = document.getElementById('cardSection');
+                    const walletLabel   = document.getElementById('walletLabel');
+                    const walletInput   = document.getElementById('wallet_number');
+
+                    // Hide all panels first
+                    codNotice.style.display     = 'none';
+                    walletSection.style.display  = 'none';
+                    cardSection.style.display    = 'none';
+
+                    // Clear required attributes
+                    setCardRequired(false);
+                    if (walletInput) walletInput.required = false;
+
+                    if (method === 'cash_on_delivery') {
+                        codNotice.style.display = 'block';
+                    } else if (method === 'gcash' || method === 'paymaya') {
+                        walletSection.style.display = 'block';
+                        walletInput.required = true;
+                        walletLabel.textContent = (method === 'gcash' ? 'GCash' : 'PayMaya') + ' Mobile Number';
+                    } else if (method === 'credit_card') {
+                        cardSection.style.display = 'block';
+                        setCardRequired(true);
+                    }
+                }
+
+                function setCardRequired(req) {
+                    ['card_name','card_number','card_expiry','card_cvv'].forEach(id => {
+                        const el = document.getElementById(id);
+                        if (el) el.required = req;
+                    });
+                }
+
+                function formatCardNumber(input) {
+                    let v = input.value.replace(/\D/g, '').slice(0, 16);
+                    input.value = v.replace(/(.{4})/g, '$1 ').trim();
+                }
+
+                function formatCardExpiry(input) {
+                    let v = input.value.replace(/\D/g, '').slice(0, 4);
+                    if (v.length >= 3) v = v.slice(0,2) + '/' + v.slice(2);
+                    input.value = v;
+                }
+
+                function validateCheckoutPayment(e) {
+                    const method = document.getElementById('payment_method').value;
+
+                    if (method === 'gcash' || method === 'paymaya') {
+                        const phone = document.getElementById('wallet_number').value;
+                        if (!phone || !/^09\d{9}$/.test(phone)) {
+                            e.preventDefault();
+                            alert('Please enter a valid 11-digit mobile number starting with 09.');
+                            document.getElementById('wallet_number').focus();
+                            return false;
+                        }
+                    } else if (method === 'credit_card') {
+                        const num  = (document.getElementById('card_number').value || '').replace(/\s/g, '');
+                        const name = (document.getElementById('card_name').value || '').trim();
+                        const exp  = (document.getElementById('card_expiry').value || '').trim();
+                        const cvv  = (document.getElementById('card_cvv').value || '').trim();
+
+                        if (!name)                             { e.preventDefault(); alert('Please enter the cardholder name.'); return false; }
+                        if (num.length < 13 || num.length > 19){ e.preventDefault(); alert('Please enter a valid card number.'); return false; }
+                        if (!/^\d{2}\/\d{2}$/.test(exp))       { e.preventDefault(); alert('Please enter a valid card expiry (MM/YY).'); return false; }
+                        if (cvv.length < 3)                    { e.preventDefault(); alert('Please enter a valid CVV (3–4 digits).'); return false; }
+                    }
+                    return true;
+                }
+
+                // Attach payment validation to form submit
+                document.querySelector('form').addEventListener('submit', validateCheckoutPayment);
+
+                // Initialize on page load — show COD notice by default
+                onPaymentMethodChange('cash_on_delivery');
                 </script>
 
 

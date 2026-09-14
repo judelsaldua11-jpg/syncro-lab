@@ -252,6 +252,116 @@ include __DIR__ . '/../../src/Views/layouts/header.php';
             </div>
         <?php endif; ?>
 
+        <!-- ─── Membership Payment Log ─── -->
+        <?php
+        $stmtPayLog = $pdo->query("
+            SELECT mp.id, mp.user_id, mp.payment_method, mp.wallet_number, mp.card_last4,
+                   mp.amount, mp.reference_number, mp.status, mp.action,
+                   mp.membership_start, mp.membership_expiry,
+                   mp.bike_fit_claimed, mp.deep_clean_claimed,
+                   mp.created_at, mp.verified_at,
+                   u.full_name, u.email
+            FROM membership_payments mp
+            JOIN users u ON mp.user_id = u.id
+            ORDER BY mp.created_at DESC
+            LIMIT 50
+        ");
+        $paymentLogs = $stmtPayLog->fetchAll();
+        ?>
+        <div style="margin-top: 40px;">
+            <h2 style="font-family: var(--font-heading); font-size: 28px; text-transform: uppercase; margin-bottom: 16px;">
+                💳 Membership Payment Log
+            </h2>
+            <?php if (empty($paymentLogs)): ?>
+                <div style="background: #fff; border-radius: var(--radius); border: 1px solid var(--gray); padding: 32px; text-align: center; color: var(--gray-dark);">
+                    No payment records found yet.
+                </div>
+            <?php else: ?>
+                <div style="background: #fff; border-radius: var(--radius); border: 1px solid var(--gray); overflow: hidden; box-shadow: var(--shadow); overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse; min-width: 1050px;">
+                        <thead style="background: var(--dark); color: var(--light);">
+                            <tr>
+                                <th style="padding: 10px 14px; text-align: left; font-size: 11px; text-transform: uppercase;">User</th>
+                                <th style="padding: 10px 14px; text-align: left; font-size: 11px; text-transform: uppercase;">Method / Details</th>
+                                <th style="padding: 10px 14px; text-align: left; font-size: 11px; text-transform: uppercase;">Reference</th>
+                                <th style="padding: 10px 14px; text-align: left; font-size: 11px; text-transform: uppercase;">Amount</th>
+                                <th style="padding: 10px 14px; text-align: left; font-size: 11px; text-transform: uppercase;">Action</th>
+                                <th style="padding: 10px 14px; text-align: left; font-size: 11px; text-transform: uppercase;">Status</th>
+                                <th style="padding: 10px 14px; text-align: left; font-size: 11px; text-transform: uppercase;">Membership Period</th>
+                                <th style="padding: 10px 14px; text-align: left; font-size: 11px; text-transform: uppercase;">Benefits Claimed</th>
+                                <th style="padding: 10px 14px; text-align: left; font-size: 11px; text-transform: uppercase;">Verified At</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($paymentLogs as $pl):
+                                $statusColors = [
+                                    'verified' => ['bg' => '#e8f5e9', 'color' => '#2e7d32'],
+                                    'pending'  => ['bg' => '#fff8e1', 'color' => '#7b6100'],
+                                    'failed'   => ['bg' => '#ffebee', 'color' => '#c62828'],
+                                ];
+                                $sc = $statusColors[$pl['status']] ?? ['bg' => '#f5f5f5', 'color' => '#555'];
+                                if ($pl['payment_method'] === 'gcash') {
+                                    $methodLabel  = '💙 GCash';
+                                    $methodDetail = $pl['wallet_number'] ?: '';
+                                } elseif ($pl['payment_method'] === 'maya') {
+                                    $methodLabel  = '💚 Maya';
+                                    $methodDetail = $pl['wallet_number'] ?: '';
+                                } else {
+                                    $methodLabel  = '💳 Card';
+                                    $methodDetail = $pl['card_last4'] ? '&bull;&bull;&bull;&bull; ' . $pl['card_last4'] : '';
+                                }
+                            ?>
+                                <tr style="border-bottom: 1px solid var(--gray);">
+                                    <td style="padding: 10px 14px;">
+                                        <strong style="font-size: 14px;"><?= htmlspecialchars($pl['full_name']) ?></strong><br>
+                                        <span style="color: var(--gray-dark); font-size: 12px;"><?= htmlspecialchars($pl['email']) ?></span>
+                                    </td>
+                                    <td style="padding: 10px 14px; font-size: 14px;">
+                                        <?= $methodLabel ?>
+                                        <?php if ($methodDetail): ?>
+                                            <br><span style="font-size: 12px; color: var(--gray-dark);"><?= $methodDetail ?></span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td style="padding: 10px 14px; font-size: 13px; font-family: monospace;"><?= htmlspecialchars($pl['reference_number']) ?></td>
+                                    <td style="padding: 10px 14px; font-size: 14px; font-weight: 700;">&#8369;<?= number_format($pl['amount'], 2) ?></td>
+                                    <td style="padding: 10px 14px; font-size: 13px; text-transform: capitalize;"><?= htmlspecialchars($pl['action']) ?></td>
+                                    <td style="padding: 10px 14px;">
+                                        <span style="background: <?= $sc['bg'] ?>; color: <?= $sc['color'] ?>; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase;">
+                                            <?= $pl['status'] ?>
+                                        </span>
+                                    </td>
+                                    <td style="padding: 10px 14px; font-size: 12px; color: var(--gray-dark);">
+                                        <?php if ($pl['membership_start'] && $pl['membership_expiry']): ?>
+                                            <?= date('M d, Y', strtotime($pl['membership_start'])) ?> &ndash;
+                                            <?= date('M d, Y', strtotime($pl['membership_expiry'])) ?>
+                                        <?php else: ?>
+                                            &mdash;
+                                        <?php endif; ?>
+                                    </td>
+                                    <td style="padding: 10px 14px; font-size: 12px;">
+                                        <?php if ($pl['status'] === 'verified'): ?>
+                                            <div style="display: flex; flex-direction: column; gap: 3px;">
+                                                <span style="<?= $pl['bike_fit_claimed'] ? 'color:#2e7d32;font-weight:700;' : 'color:#856404;' ?>">
+                                                    🚴 Bike Fit: <?= $pl['bike_fit_claimed'] ? '✅ Claimed' : '⏳ Unused' ?>
+                                                </span>
+                                                <span style="<?= $pl['deep_clean_claimed'] ? 'color:#2e7d32;font-weight:700;' : 'color:#856404;' ?>">
+                                                    🧼 Deep Clean: <?= $pl['deep_clean_claimed'] ? '✅ Claimed' : '⏳ Unused' ?>
+                                                </span>
+                                            </div>
+                                        <?php else: ?>
+                                            <span style="color: var(--gray-dark);">—</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td style="padding: 10px 14px; font-size: 12px; color: var(--gray-dark);">
+                                        <?= $pl['verified_at'] ? date('M d, Y g:i A', strtotime($pl['verified_at'])) : '—' ?>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
+        </div>
         <p style="margin-top: 32px;">
             <a href="dashboard.php" style="color: var(--green); font-weight: 700;">&larr; Back to Dashboard</a>
         </p>

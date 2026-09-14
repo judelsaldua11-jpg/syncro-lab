@@ -1,5 +1,11 @@
 <?php
-// pages/admin/orders.php - Order Fulfillment & Management
+// pages/admin/orders.php — Order Management (HQ Admin + Branch Manager)
+//
+//   • HQ Admin       → sees every order across all branches
+//   • Branch Manager → sees only their branch
+//
+//   Refund handling lives EXCLUSIVELY in dashboard.php#refund-panel.
+//   This page only shows a read-only refund badge that links there.
 
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
@@ -8,425 +14,328 @@ session_start();
 require_once __DIR__ . '/../../database/config.php';
 require_once __DIR__ . '/../../inc/functions.php';
 
-// Authentication & Role Check
+/* ── Auth ──────────────────────────────────────────────────── */
 if (!isLoggedIn()) {
-    header('Location: ../auth/login.php?error=' . urlencode('Please log in to manage orders.'));
+    header('Location: ../auth/login.php?error=Please log in.');
     exit;
 }
-
 $role = getUserRole();
 if ($role !== 'hq_admin' && $role !== 'branch_manager') {
-    header('Location: ../../index.php?error=' . urlencode('You do not have permission to view this page.'));
+    header('Location: ../profile.php?error=Access denied.');
     exit;
 }
 
-$isAdmin = ($role === 'hq_admin');
-$branchId = (int)($_SESSION['branch_id'] ?? 0);
-$pdo = getConnection();
+$user       = getCurrentUser();
+$isAdmin    = ($role === 'hq_admin');
+$branchId   = (int)($_SESSION['branch_id'] ?? 0);
+$branchName = $_SESSION['branch_name'] ?? 'Your Branch';
+$pdo        = getConnection();
+$msg        = '';
+$err        = '';
 
-$message = '';
-$error = '';
+/* ── Status update ─────────────────────────────────────────── */
+$allowedStatuses = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled', 'returned'];
 
-// Handle Status & Tracking Number Update
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_order') {
-    $orderId = (int)($_POST['order_id'] ?? 0);
-    $newStatus = trim($_POST['status'] ?? '');
-    $trackingNumber = trim($_POST['tracking_number'] ?? '');
-    $allowedStatuses = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled', 'returned'];
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_status') {
+    $orderId   = (int)($_POST['order_id'] ?? 0);
+    $newStatus = $_POST['new_status'] ?? '';
 
-    if ($orderId > 0 && in_array($newStatus, $allowedStatuses)) {
+    if ($orderId > 0 && in_array($newStatus, $allowedStatuses, true)) {
         try {
-            // Verify branch access if not HQ Admin
-            if (!$isAdmin) {
-                $checkStmt = $pdo->prepare("SELECT branch_id FROM orders WHERE id = ?");
-                $checkStmt->execute([$orderId]);
-                $orderBranch = $checkStmt->fetchColumn();
-                if ((int)$orderBranch !== $branchId) {
-                    throw new Exception('Permission denied: Order does not belong to your branch.');
-                }
-            }
+            // Verify ownership for BM
+            $sql = "SELECT id FROM orders WHERE id = ?" . ($isAdmin ? '' : ' AND branch_id = ?');
+            $params = $isAdmin ? [$orderId] : [$orderId, $branchId];
 
-            if ($newStatus === 'cancelled') {
-                $cancelResult = cancelOrder($pdo, $orderId, null, 'Cancelled by admin (' . ($_SESSION['user_name'] ?? 'Admin') . ')');
-                if (!$cancelResult['success']) {
-                    throw new Exception($cancelResult['message']);
-                }
-                if (!empty($trackingNumber)) {
-                    $stmt = $pdo->prepare("UPDATE orders SET tracking_number = ?, updated_at = NOW() WHERE id = ?");
-                    $stmt->execute([$trackingNumber, $orderId]);
-                }
-            } else {
-                if (!empty($trackingNumber)) {
-                    $stmt = $pdo->prepare("UPDATE orders SET status = ?, tracking_number = ?, updated_at = NOW() WHERE id = ?");
-                    $stmt->execute([$newStatus, $trackingNumber, $orderId]);
-                } else {
-                    $stmt = $pdo->prepare("UPDATE orders SET status = ?, updated_at = NOW() WHERE id = ?");
-                    $stmt->execute([$newStatus, $orderId]);
-                }
-            }
+            $s = $pdo->prepare($sql);
+            $s->execute($params);
+            if (!$s->fetch()) throw new Exception('Order not found or outside your branch.');
 
-            $message = "Order #$orderId status updated to " . ucfirst($newStatus) . " successfully.";
+            $pdo->prepare("UPDATE orders SET status = ? WHERE id = ?")
+                ->execute([$newStatus, $orderId]);
+
+            $msg = "Order #" . str_pad($orderId, 5, '0', STR_PAD_LEFT) . " status updated to " . ucfirst($newStatus) . ".";
         } catch (Exception $e) {
-            $error = $e->getMessage();
+            $err = $e->getMessage();
         }
     } else {
-        $error = 'Invalid order or status value provided.';
+        $err = 'Invalid status update.';
     }
 }
 
-// Search & Filter Parameters
-$search = trim($_GET['search'] ?? '');
-$statusFilter = trim($_GET['status'] ?? '');
-$filterBranch = (int)($_GET['branch'] ?? 0);
-$dateFrom = trim($_GET['date_from'] ?? '');
-$dateTo = trim($_GET['date_to'] ?? '');
+/* ── Filters ───────────────────────────────────────────────── */
+$statusFilter = $_GET['status'] ?? '';
+$search       = trim($_GET['search'] ?? '');
+$rfBranch     = $isAdmin ? (int)($_GET['branch'] ?? 0) : 0;
 
-// Base Query
-$sql = "
-    SELECT 
-        o.id AS order_id,
-        o.order_date,
-        o.total_amount,
-        o.status,
-        o.payment_method,
-        o.shipping_address,
-        o.tracking_number,
-        o.notes,
-        u.full_name AS customer_name,
-        u.email AS customer_email,
-        u.phone AS customer_phone,
-        b.id AS branch_id,
-        b.name AS branch_name,
-        COUNT(oi.id) AS total_items
-    FROM orders o
-    JOIN users u ON o.user_id = u.id
-    LEFT JOIN branches b ON o.branch_id = b.id
-    LEFT JOIN order_items oi ON o.id = oi.order_id
-    WHERE 1=1
-";
-
+$where = ['1=1'];
 $params = [];
 
 if (!$isAdmin) {
-    $sql .= " AND o.branch_id = ?";
+    $where[] = 'o.branch_id = ?';
     $params[] = $branchId;
-} elseif ($filterBranch > 0) {
-    $sql .= " AND o.branch_id = ?";
-    $params[] = $filterBranch;
+} elseif ($rfBranch > 0) {
+    $where[] = 'o.branch_id = ?';
+    $params[] = $rfBranch;
 }
 
-if (!empty($statusFilter)) {
-    $sql .= " AND o.status = ?";
+if ($statusFilter !== '' && in_array($statusFilter, $allowedStatuses, true)) {
+    $where[] = 'o.status = ?';
     $params[] = $statusFilter;
 }
 
-if (!empty($search)) {
-    $sql .= " AND (u.full_name LIKE ? OR u.email LIKE ? OR o.id = ? OR o.tracking_number LIKE ?)";
-    $like = "%$search%";
-    $orderSearchId = is_numeric($search) ? (int)$search : 0;
-    $params[] = $like;
-    $params[] = $like;
-    $params[] = $orderSearchId;
-    $params[] = $like;
-}
-
-if (!empty($dateFrom)) {
-    $sql .= " AND DATE(o.order_date) >= ?";
-    $params[] = $dateFrom;
-}
-
-if (!empty($dateTo)) {
-    $sql .= " AND DATE(o.order_date) <= ?";
-    $params[] = $dateTo;
-}
-
-$sql .= " GROUP BY o.id ORDER BY o.order_date DESC LIMIT 100";
-
-$stmt = $pdo->prepare($sql);
-$stmt->execute($params);
-$orders = $stmt->fetchAll();
-
-// Fetch items for displayed orders
-$orderItemsMap = [];
-if (!empty($orders)) {
-    $orderIds = array_column($orders, 'order_id');
-    $placeholders = implode(',', array_fill(0, count($orderIds), '?'));
-    $itemsStmt = $pdo->prepare("
-        SELECT 
-            oi.order_id,
-            oi.price_at_sale,
-            oi.quantity,
-            p.name AS product_name,
-            p.sku,
-            i.serial_number,
-            b.name AS stock_branch
-        FROM order_items oi
-        LEFT JOIN inventory i ON oi.inventory_id = i.id
-        LEFT JOIN products p ON i.product_id = p.id
-        LEFT JOIN branches b ON i.branch_id = b.id
-        WHERE oi.order_id IN ($placeholders)
-    ");
-    $itemsStmt->execute($orderIds);
-    while ($row = $itemsStmt->fetch()) {
-        $orderItemsMap[$row['order_id']][] = $row;
+if ($search !== '') {
+    // Match order id or customer name/email
+    if (ctype_digit($search)) {
+        $where[] = '(o.id = ? OR u.full_name LIKE ? OR u.email LIKE ?)';
+        $params[] = (int)$search;
+        $params[] = "%{$search}%";
+        $params[] = "%{$search}%";
+    } else {
+        $where[] = '(u.full_name LIKE ? OR u.email LIKE ?)';
+        $params[] = "%{$search}%";
+        $params[] = "%{$search}%";
     }
 }
 
-$allBranches = $isAdmin ? getBranches() : [];
+$sql = "
+    SELECT
+        o.id, o.order_date, o.total_amount, o.status, o.payment_method,
+        o.shipping_address, o.tracking_number,
+        u.full_name AS customer_name, u.email AS customer_email, u.phone AS customer_phone,
+        b.name AS branch_name,
+        (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.id) AS item_count,
+        (SELECT COUNT(*) FROM refund_requests rr
+          WHERE rr.order_id = o.id AND rr.status = 'pending') AS pending_refunds
+    FROM orders o
+    JOIN users u ON o.user_id = u.id
+    LEFT JOIN branches b ON o.branch_id = b.id
+    WHERE " . implode(' AND ', $where) . "
+    ORDER BY o.order_date DESC
+    LIMIT 100
+";
+
+$s = $pdo->prepare($sql);
+$s->execute($params);
+$orders = $s->fetchAll();
+
+/* ── Status totals for the filter tabs ─────────────────────── */
+$countSql = "SELECT o.status, COUNT(*) AS n
+             FROM orders o
+             JOIN users u ON o.user_id = u.id
+             WHERE 1=1" . ($isAdmin ? '' : ' AND o.branch_id = ?') . "
+             GROUP BY o.status";
+$s = $pdo->prepare($countSql);
+$s->execute($isAdmin ? [] : [$branchId]);
+$statusCounts = ['all' => 0];
+foreach ($s->fetchAll() as $row) {
+    $statusCounts[$row['status']] = (int)$row['n'];
+    $statusCounts['all'] += (int)$row['n'];
+}
 
 include __DIR__ . '/../../src/Views/layouts/header.php';
+
+$card = 'background:#fff;border-radius:var(--radius);border:1px solid var(--gray);box-shadow:var(--shadow);';
+
+$statusColors = [
+    'pending'   => '#f0ad4e',
+    'confirmed' => '#0275d8',
+    'shipped'   => '#6c3483',
+    'delivered' => '#2e7d32',
+    'cancelled' => '#c0392b',
+    'returned'  => '#7d5a00',
+];
 ?>
 
-<div style="padding: 40px 0 60px; color: var(--dark); min-height: 70vh; background: var(--light);">
-    <div style="max-width: 1280px; margin: 0 auto; padding: 0 40px;">
-        
-        <!-- Header -->
-        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
-            <div>
-                <a href="dashboard.php" style="color: var(--gray-dark); font-size: 14px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; margin-bottom: 8px;">
-                    &larr; Back to Dashboard
+<div style="padding:40px 0 60px;background:var(--light);min-height:70vh;color:var(--dark);">
+<div style="max-width:1280px;margin:0 auto;padding:0 40px;">
+
+    <!-- HEADER -->
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:16px;margin-bottom:24px;">
+        <div>
+            <h1 style="font-family:var(--font-heading);font-size:42px;text-transform:uppercase;margin:0 0 6px;">Order Management</h1>
+            <p style="color:var(--gray-dark);font-size:16px;margin:0;">
+                <?= $isAdmin ? 'All branches' : 'Branch: <strong>' . htmlspecialchars($branchName) . '</strong>' ?>
+                &bull; <?= number_format($statusCounts['all']) ?> total orders
+            </p>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <a href="dashboard.php" class="btn btn--outline btn--small" style="height:38px;padding:0 16px;">← Dashboard</a>
+        </div>
+    </div>
+
+    <!-- FLASH -->
+    <?php if ($msg): ?>
+        <div style="background:#e8f5e9;color:#2e7d32;padding:14px 20px;border-radius:var(--radius);border-left:4px solid var(--green);margin-bottom:20px;font-weight:600;">✓ <?= htmlspecialchars($msg) ?></div>
+    <?php endif; ?>
+    <?php if ($err): ?>
+        <div style="background:#ffebee;color:#c62828;padding:14px 20px;border-radius:var(--radius);border-left:4px solid #d32f2f;margin-bottom:20px;font-weight:600;">✕ <?= htmlspecialchars($err) ?></div>
+    <?php endif; ?>
+
+    <!-- FILTER BAR -->
+    <div style="<?= $card ?>padding:16px;margin-bottom:20px;">
+        <!-- Status tabs -->
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">
+            <?php
+            $tabs = [
+                ''            => 'All',
+                'pending'     => 'Pending',
+                'confirmed'   => 'Confirmed',
+                'shipped'     => 'Shipped',
+                'delivered'   => 'Delivered',
+                'cancelled'   => 'Cancelled',
+                'returned'    => 'Returned',
+            ];
+            foreach ($tabs as $key => $label):
+                $active = ($statusFilter === $key);
+                $count  = $statusCounts[$key ?: 'all'] ?? 0;
+                $href   = '?' . http_build_query(array_filter([
+                    'status' => $key,
+                    'branch' => $isAdmin && $rfBranch ? $rfBranch : null,
+                    'search' => $search ?: null,
+                ]));
+            ?>
+                <a href="<?= $href ?>" style="text-decoration:none;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:700;
+                    background:<?= $active ? 'var(--dark)' : 'var(--light)' ?>;
+                    color:<?= $active ? '#fff' : 'var(--dark)' ?>;
+                    border:1px solid <?= $active ? 'var(--dark)' : 'var(--gray)' ?>;">
+                    <?= $label ?> <span style="opacity:0.7;">(<?= $count ?>)</span>
                 </a>
-                <h1 style="font-family: var(--font-heading); font-size: 38px; text-transform: uppercase; margin: 0;">
-                    Order Management
-                </h1>
-                <p style="color: var(--gray-dark); font-size: 16px; margin-top: 4px;">
-                    <?= $isAdmin ? 'Global Orders across all branches' : 'Branch Orders for ' . htmlspecialchars($_SESSION['branch_name'] ?? 'Your Branch') ?>
-                </p>
-            </div>
-            
-            <div style="display: flex; gap: 12px;">
-                <a href="dashboard.php" class="btn btn--outline btn--small" style="height: 38px; padding: 0 16px;">
-                    📊 Dashboard
-                </a>
-                <a href="inventory.php" class="btn btn--outline btn--small" style="height: 38px; padding: 0 16px;">
-                    📦 Inventory
-                </a>
-            </div>
+            <?php endforeach; ?>
         </div>
 
-        <?php if (!empty($message)): ?>
-            <div style="background: #e8f5e9; color: #2e7d32; padding: 14px 18px; border-radius: var(--radius); margin-bottom: 20px; border-left: 4px solid var(--green); font-weight: 500;">
-                ✓ <?= htmlspecialchars($message) ?>
-            </div>
-        <?php endif; ?>
+        <!-- Search + branch filter -->
+        <form method="GET" action="" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+            <?php if ($statusFilter !== ''): ?>
+                <input type="hidden" name="status" value="<?= htmlspecialchars($statusFilter) ?>">
+            <?php endif; ?>
 
-        <?php if (!empty($error)): ?>
-            <div style="background: #ffebee; color: #c62828; padding: 14px 18px; border-radius: var(--radius); margin-bottom: 20px; border-left: 4px solid #d32f2f; font-weight: 500;">
-                ✕ <?= htmlspecialchars($error) ?>
-            </div>
-        <?php endif; ?>
+            <input type="text" name="search" value="<?= htmlspecialchars($search) ?>"
+                   placeholder="Search order #, customer name or email…"
+                   style="flex:1;min-width:240px;height:38px;padding:0 12px;border:1px solid var(--gray);border-radius:var(--radius);font-size:14px;">
 
-        <!-- Filters Section -->
-        <div style="background: #fff; border-radius: var(--radius); border: 1px solid var(--gray); padding: 20px; box-shadow: var(--shadow); margin-bottom: 24px;">
-            <form method="GET" action="" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)) 120px; gap: 12px; align-items: end;">
-                <div>
-                    <label style="display: block; font-size: 12px; text-transform: uppercase; font-weight: 700; margin-bottom: 4px; color: var(--gray-dark);">Search</label>
-                    <input type="text" name="search" value="<?= htmlspecialchars($search) ?>" placeholder="Order #, Customer, Email..." 
-                           style="width: 100%; height: 38px; padding: 0 12px; border: 1px solid var(--gray); border-radius: var(--radius); font-size: 14px;">
-                </div>
+            <?php if ($isAdmin): ?>
+                <select name="branch" style="height:38px;padding:0 12px;border:1px solid var(--gray);border-radius:var(--radius);font-size:14px;background:#fff;">
+                    <option value="0">All Branches</option>
+                    <?php foreach (getBranches() as $b): ?>
+                        <option value="<?= $b['id'] ?>" <?= $rfBranch === (int)$b['id'] ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($b['name']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            <?php endif; ?>
 
-                <div>
-                    <label style="display: block; font-size: 12px; text-transform: uppercase; font-weight: 700; margin-bottom: 4px; color: var(--gray-dark);">Status</label>
-                    <select name="status" style="width: 100%; height: 38px; padding: 0 10px; border: 1px solid var(--gray); border-radius: var(--radius); font-size: 14px; background: #fff;">
-                        <option value="">All Statuses</option>
-                        <option value="pending" <?= $statusFilter === 'pending' ? 'selected' : '' ?>>Pending</option>
-                        <option value="confirmed" <?= $statusFilter === 'confirmed' ? 'selected' : '' ?>>Confirmed</option>
-                        <option value="shipped" <?= $statusFilter === 'shipped' ? 'selected' : '' ?>>Shipped</option>
-                        <option value="delivered" <?= $statusFilter === 'delivered' ? 'selected' : '' ?>>Delivered</option>
-                        <option value="cancelled" <?= $statusFilter === 'cancelled' ? 'selected' : '' ?>>Cancelled</option>
-                        <option value="returned" <?= $statusFilter === 'returned' ? 'selected' : '' ?>>Returned</option>
-                    </select>
-                </div>
+            <button type="submit" class="btn btn--green btn--small" style="height:38px;font-size:14px;padding:0 20px;">Search</button>
+            <a href="orders.php" class="btn btn--outline btn--small" style="height:38px;font-size:14px;padding:0 16px;">Clear</a>
+        </form>
+    </div>
 
-                <?php if ($isAdmin): ?>
-                <div>
-                    <label style="display: block; font-size: 12px; text-transform: uppercase; font-weight: 700; margin-bottom: 4px; color: var(--gray-dark);">Branch</label>
-                    <select name="branch" style="width: 100%; height: 38px; padding: 0 10px; border: 1px solid var(--gray); border-radius: var(--radius); font-size: 14px; background: #fff;">
-                        <option value="0">All Branches</option>
-                        <?php foreach ($allBranches as $b): ?>
-                            <option value="<?= $b['id'] ?>" <?= $filterBranch === (int)$b['id'] ? 'selected' : '' ?>>
-                                <?= htmlspecialchars($b['name']) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <?php endif; ?>
-
-                <div>
-                    <label style="display: block; font-size: 12px; text-transform: uppercase; font-weight: 700; margin-bottom: 4px; color: var(--gray-dark);">Date From</label>
-                    <input type="date" name="date_from" value="<?= htmlspecialchars($dateFrom) ?>" 
-                           style="width: 100%; height: 38px; padding: 0 8px; border: 1px solid var(--gray); border-radius: var(--radius); font-size: 14px;">
-                </div>
-
-                <div>
-                    <label style="display: block; font-size: 12px; text-transform: uppercase; font-weight: 700; margin-bottom: 4px; color: var(--gray-dark);">Date To</label>
-                    <input type="date" name="date_to" value="<?= htmlspecialchars($dateTo) ?>" 
-                           style="width: 100%; height: 38px; padding: 0 8px; border: 1px solid var(--gray); border-radius: var(--radius); font-size: 14px;">
-                </div>
-
-                <div style="display: flex; gap: 8px;">
-                    <button type="submit" class="btn btn--green" style="height: 38px; font-size: 14px; padding: 0 16px; flex: 1;">Filter</button>
-                    <a href="orders.php" class="btn btn--outline" style="height: 38px; font-size: 14px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center;">✕</a>
-                </div>
-            </form>
-        </div>
-
-        <!-- Orders Table -->
+    <!-- ORDERS TABLE -->
+    <div style="<?= $card ?>overflow:hidden;">
         <?php if (empty($orders)): ?>
-            <div style="background: #fff; border-radius: var(--radius); border: 1px solid var(--gray); padding: 50px 20px; text-align: center; box-shadow: var(--shadow);">
-                <p style="font-size: 18px; color: var(--gray-dark); margin-bottom: 12px;">No orders found matching your criteria.</p>
-                <a href="orders.php" class="btn btn--small btn--outline">Reset Filters</a>
+            <div style="padding:60px 20px;text-align:center;color:var(--gray-dark);">
+                <p style="font-size:18px;margin:0 0 6px;">No orders found.</p>
+                <p style="font-size:13px;margin:0;">Try adjusting your filters.</p>
             </div>
         <?php else: ?>
-            <div style="background: #fff; border-radius: var(--radius); border: 1px solid var(--gray); box-shadow: var(--shadow); overflow: hidden;">
-                <div style="overflow-x: auto;">
-                    <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 14px;">
-                        <thead style="background: var(--dark); color: var(--light); text-transform: uppercase; font-size: 12px; letter-spacing: 0.5px;">
-                            <tr>
-                                <th style="padding: 14px 16px;">Order ID</th>
-                                <th style="padding: 14px 16px;">Date</th>
-                                <th style="padding: 14px 16px;">Customer</th>
-                                <th style="padding: 14px 16px;">Branch</th>
-                                <th style="padding: 14px 16px;">Total</th>
-                                <th style="padding: 14px 16px;">Status</th>
-                                <th style="padding: 14px 16px;">Tracking</th>
-                                <th style="padding: 14px 16px; text-align: right;">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($orders as $ord): 
-                                $statusColor = getOrderStatusColor($ord['status']);
-                                $items = $orderItemsMap[$ord['order_id']] ?? [];
-                            ?>
-                                <tr style="border-bottom: 1px solid var(--gray); transition: background 0.15s ease;" onmouseover="this.style.background='#fdfdfd'" onmouseout="this.style.background='white'">
-                                    <td style="padding: 14px 16px; font-weight: 700; font-family: var(--font-heading);">
-                                        #<?= str_pad($ord['order_id'], 5, '0', STR_PAD_LEFT) ?>
-                                    </td>
-                                    <td style="padding: 14px 16px; color: var(--gray-dark); white-space: nowrap;">
-                                        <?= date('M d, Y', strtotime($ord['order_date'])) ?><br>
-                                        <span style="font-size: 11px;"><?= date('h:i A', strtotime($ord['order_date'])) ?></span>
-                                    </td>
-                                    <td style="padding: 14px 16px;">
-                                        <strong><?= htmlspecialchars($ord['customer_name']) ?></strong><br>
-                                        <span style="font-size: 12px; color: var(--gray-dark);"><?= htmlspecialchars($ord['customer_email']) ?></span>
-                                    </td>
-                                    <td style="padding: 14px 16px; font-size: 13px;">
-                                        <?= htmlspecialchars($ord['branch_name'] ?? 'Multi-Branch') ?>
-                                    </td>
-                                    <td style="padding: 14px 16px; font-weight: 700; color: var(--dark); font-family: var(--font-heading);">
-                                        ₱ <?= number_format($ord['total_amount'], 2) ?>
-                                    </td>
-                                    <td style="padding: 14px 16px;">
-                                        <span style="display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase; background: <?= $statusColor ?>22; color: <?= $statusColor ?>; border: 1px solid <?= $statusColor ?>;">
-                                            <?= htmlspecialchars(getOrderStatusLabel($ord['status'])) ?>
-                                        </span>
-                                    </td>
-                                    <td style="padding: 14px 16px; font-size: 13px; color: var(--gray-dark);">
-                                        <?= $ord['tracking_number'] ? '<code style="background: var(--light); padding: 2px 6px; border-radius: 3px;">' . htmlspecialchars($ord['tracking_number']) . '</code>' : '<span style="color:#bbb;">—</span>' ?>
-                                    </td>
-                                    <td style="padding: 14px 16px; text-align: right;">
-                                        <button type="button" class="btn btn--small btn--outline" 
-                                                onclick="toggleOrderModal(<?= $ord['order_id'] ?>)" 
-                                                style="height: 32px; font-size: 12px; padding: 0 12px;">
-                                            Manage ▾
-                                        </button>
-                                    </td>
-                                </tr>
+            <div style="overflow-x:auto;">
+                <table style="width:100%;border-collapse:collapse;font-size:14px;text-align:left;">
+                    <thead style="background:var(--dark);color:var(--light);font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">
+                        <tr>
+                            <th style="padding:12px 14px;">Order #</th>
+                            <th style="padding:12px 14px;">Date</th>
+                            <th style="padding:12px 14px;">Customer</th>
+                            <th style="padding:12px 14px;">Branch</th>
+                            <th style="padding:12px 14px;">Items</th>
+                            <th style="padding:12px 14px;">Amount</th>
+                            <th style="padding:12px 14px;">Payment</th>
+                            <th style="padding:12px 14px;">Status</th>
+                            <th style="padding:12px 14px;">Refund</th>
+                            <th style="padding:12px 14px;min-width:220px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($orders as $o):
+                        $statusColor = $statusColors[$o['status']] ?? 'var(--dark)';
+                        $orderNum    = str_pad($o['id'], 5, '0', STR_PAD_LEFT);
+                    ?>
+                        <tr style="border-bottom:1px solid var(--gray);" onmouseover="this.style.background='#fafafa'" onmouseout="this.style.background='transparent'">
+                            <td style="padding:12px 14px;font-weight:700;font-family:var(--font-heading);white-space:nowrap;">
+                                #<?= $orderNum ?>
+                            </td>
+                            <td style="padding:12px 14px;white-space:nowrap;">
+                                <span style="font-size:13px;"><?= date('M d, Y', strtotime($o['order_date'])) ?></span><br>
+                                <span style="font-size:11px;color:var(--gray-dark);"><?= date('h:i A', strtotime($o['order_date'])) ?></span>
+                            </td>
+                            <td style="padding:12px 14px;">
+                                <strong style="font-size:13px;"><?= htmlspecialchars($o['customer_name']) ?></strong><br>
+                                <span style="font-size:11px;color:var(--gray-dark);"><?= htmlspecialchars($o['customer_email']) ?></span>
+                            </td>
+                            <td style="padding:12px 14px;">
+                                <span style="display:inline-block;font-size:11px;font-weight:700;background:var(--light);border:1px solid var(--gray);border-radius:20px;padding:3px 9px;white-space:nowrap;">
+                                    📍 <?= htmlspecialchars($o['branch_name'] ?? 'N/A') ?>
+                                </span>
+                            </td>
+                            <td style="padding:12px 14px;"><?= (int)$o['item_count'] ?></td>
+                            <td style="padding:12px 14px;font-weight:700;white-space:nowrap;">₱ <?= number_format($o['total_amount'], 2) ?></td>
+                            <td style="padding:12px 14px;font-size:12px;"><?= htmlspecialchars(strtoupper($o['payment_method'] ?? '—')) ?></td>
+                            <td style="padding:12px 14px;">
+                                <span style="display:inline-block;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;background:<?= $statusColor ?>;color:#fff;white-space:nowrap;">
+                                    <?= htmlspecialchars($o['status']) ?>
+                                </span>
+                            </td>
+                            <td style="padding:12px 14px;">
+                                <?php if ((int)$o['pending_refunds'] > 0): ?>
+                                    <a href="dashboard.php#refund-panel"
+                                       title="Review in dashboard"
+                                       style="display:inline-block;font-size:11px;font-weight:700;background:#fdf2f2;color:#c0392b;border:1px solid #f5c6c6;border-radius:20px;padding:4px 10px;text-decoration:none;white-space:nowrap;">
+                                        💸 <?= (int)$o['pending_refunds'] ?> pending
+                                    </a>
+                                <?php else: ?>
+                                    <span style="font-size:11px;color:var(--gray-dark);">—</span>
+                                <?php endif; ?>
+                            </td>
+                            <td style="padding:10px 14px;">
+                                <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                                    <!-- View order details -->
+                                    <a href="../order-success.php?id=<?= $o['id'] ?>" target="_blank"
+                                       class="btn btn--small btn--outline"
+                                       style="height:30px;font-size:11px;padding:0 10px;">View</a>
 
-                                <!-- Expandable Manage & Detail Row -->
-                                <tr id="order-detail-<?= $ord['order_id'] ?>" style="display: none; background: #fafafa; border-bottom: 2px solid var(--gray);">
-                                    <td colspan="8" style="padding: 20px 24px;">
-                                        <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 24px;">
-                                            
-                                            <!-- Items & Shipping Info -->
-                                            <div>
-                                                <h4 style="font-family: var(--font-heading); font-size: 16px; text-transform: uppercase; margin-bottom: 8px;">Order Items (<?= count($items) ?>)</h4>
-                                                <div style="background: #fff; border: 1px solid var(--gray); border-radius: var(--radius); padding: 12px; margin-bottom: 12px;">
-                                                    <?php foreach ($items as $it): ?>
-                                                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
-                                                            <div>
-                                                                <strong style="font-size: 13px;"><?= htmlspecialchars($it['product_name']) ?></strong>
-                                                                <div style="font-size: 11px; color: var(--gray-dark);">
-                                                                    SKU: <?= htmlspecialchars($it['sku'] ?? 'N/A') ?> 
-                                                                    <?= $it['serial_number'] ? '| S/N: ' . htmlspecialchars($it['serial_number']) : '' ?>
-                                                                    <?= $it['stock_branch'] ? '| Branch: ' . htmlspecialchars($it['stock_branch']) : '' ?>
-                                                                </div>
-                                                            </div>
-                                                            <div style="text-align: right; font-size: 13px;">
-                                                                <span>x<?= $it['quantity'] ?></span> &nbsp;
-                                                                <strong>₱ <?= number_format($it['price_at_sale'] * $it['quantity'], 2) ?></strong>
-                                                            </div>
-                                                        </div>
-                                                    <?php endforeach; ?>
-                                                </div>
-
-                                                <p style="font-size: 13px; color: var(--gray-dark); margin: 4px 0;">
-                                                    <strong>Shipping Address:</strong> <?= htmlspecialchars($ord['shipping_address']) ?>
-                                                </p>
-                                                <p style="font-size: 13px; color: var(--gray-dark); margin: 4px 0;">
-                                                    <strong>Payment Method:</strong> <?= htmlspecialchars(strtoupper($ord['payment_method'] ?? 'COD')) ?>
-                                                </p>
-                                                <?php if (!empty($ord['notes'])): ?>
-                                                    <p style="font-size: 13px; color: var(--gray-dark); margin: 4px 0;">
-                                                        <strong>Notes:</strong> <?= htmlspecialchars($ord['notes']) ?>
-                                                    </p>
-                                                <?php endif; ?>
-                                            </div>
-
-                                            <!-- Status Update Form -->
-                                            <div style="background: #fff; border: 1px solid var(--gray); border-radius: var(--radius); padding: 16px;">
-                                                <h4 style="font-family: var(--font-heading); font-size: 16px; text-transform: uppercase; margin-bottom: 12px;">Update Status & Fulfillment</h4>
-                                                
-                                                <form method="POST" action="">
-                                                    <input type="hidden" name="action" value="update_order">
-                                                    <input type="hidden" name="order_id" value="<?= $ord['order_id'] ?>">
-
-                                                    <div style="margin-bottom: 12px;">
-                                                        <label style="display: block; font-size: 12px; font-weight: 700; margin-bottom: 4px;">Lifecycle Status</label>
-                                                        <select name="status" style="width: 100%; height: 38px; padding: 0 10px; border: 1px solid var(--gray); border-radius: var(--radius); font-size: 14px; background: #fff;">
-                                                            <option value="pending" <?= $ord['status'] === 'pending' ? 'selected' : '' ?>>Pending Payment / Confirmation</option>
-                                                            <option value="confirmed" <?= $ord['status'] === 'confirmed' ? 'selected' : '' ?>>Confirmed (Preparing for Dispatch)</option>
-                                                            <option value="shipped" <?= $ord['status'] === 'shipped' ? 'selected' : '' ?>>Shipped / In-Transit</option>
-                                                            <option value="delivered" <?= $ord['status'] === 'delivered' ? 'selected' : '' ?>>Delivered / Picked Up</option>
-                                                            <option value="cancelled" <?= $ord['status'] === 'cancelled' ? 'selected' : '' ?>>Cancelled</option>
-                                                            <option value="returned" <?= $ord['status'] === 'returned' ? 'selected' : '' ?>>Returned</option>
-                                                        </select>
-                                                    </div>
-
-                                                    <div style="margin-bottom: 16px;">
-                                                        <label style="display: block; font-size: 12px; font-weight: 700; margin-bottom: 4px;">Tracking Number / Delivery Ref</label>
-                                                        <input type="text" name="tracking_number" value="<?= htmlspecialchars($ord['tracking_number'] ?? '') ?>" placeholder="e.g. JNT-982347102"
-                                                               style="width: 100%; height: 38px; padding: 0 10px; border: 1px solid var(--gray); border-radius: var(--radius); font-size: 14px;">
-                                                    </div>
-
-                                                    <button type="submit" class="btn btn--green" style="width: 100%; height: 38px; font-size: 14px;">
-                                                        Save Order Changes
-                                                    </button>
-                                                </form>
-                                            </div>
-
-                                        </div>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
+                                    <!-- Update status (only if not final) -->
+                                    <?php if (!in_array($o['status'], ['delivered', 'cancelled', 'returned'], true)): ?>
+                                        <form method="POST" action="" style="display:flex;gap:4px;">
+                                            <input type="hidden" name="action" value="update_status">
+                                            <input type="hidden" name="order_id" value="<?= $o['id'] ?>">
+                                            <select name="new_status"
+                                                    style="height:30px;padding:0 6px;border:1px solid var(--gray);border-radius:var(--radius);font-size:11px;background:#fff;">
+                                                <?php foreach ($allowedStatuses as $st): ?>
+                                                    <option value="<?= $st ?>" <?= $st === $o['status'] ? 'selected' : '' ?>>
+                                                        <?= ucfirst($st) ?>
+                                                    </option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                            <button type="submit" class="btn btn--small btn--green"
+                                                    style="height:30px;font-size:11px;padding:0 10px;"
+                                                    onclick="return confirm('Update status for order #<?= $orderNum ?>?');">
+                                                Update
+                                            </button>
+                                        </form>
+                                    <?php endif; ?>
+                                </div>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
             </div>
         <?php endif; ?>
-
     </div>
-</div>
 
-<script>
-function toggleOrderModal(orderId) {
-    const row = document.getElementById('order-detail-' + orderId);
-    if (row.style.display === 'none' || row.style.display === '') {
-        row.style.display = 'table-row';
-    } else {
-        row.style.display = 'none';
-    }
-}
-</script>
+    <p style="margin-top:32px;">
+        <a href="../../index.php" style="color:var(--green);font-weight:700;">← Back to Home</a>
+    </p>
+
+</div>
+</div>
 
 <?php include __DIR__ . '/../../src/Views/layouts/footer.php'; ?>

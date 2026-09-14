@@ -97,6 +97,42 @@ function getMembershipDiscount() {
     return 0.10; // 10% discount for members
 }
 
+function getSiteSetting($key, $default = null) {
+    try {
+        $pdo = getConnection();
+        $stmt = $pdo->prepare("SELECT setting_value FROM site_settings WHERE setting_key = ?");
+        $stmt->execute([$key]);
+        $val = $stmt->fetchColumn();
+        return ($val !== false && $val !== null) ? $val : $default;
+    } catch (Exception $e) {
+        return $default;
+    }
+}
+
+function updateSiteSetting($key, $value, $updatedBy = null) {
+    try {
+        $pdo = getConnection();
+        $stmt = $pdo->prepare("
+            INSERT INTO site_settings (setting_key, setting_value, updated_at, updated_by)
+            VALUES (?, ?, NOW(), ?)
+            ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = NOW(), updated_by = VALUES(updated_by)
+        ");
+        return $stmt->execute([$key, $value, $updatedBy]);
+    } catch (Exception $e) {
+        return false;
+    }
+}
+
+function getMembershipPrice() {
+    $val = getSiteSetting('membership_price', '1500.00');
+    return (float)$val;
+}
+
+function getMembershipDurationMonths() {
+    $val = getSiteSetting('membership_duration_months', '12');
+    return (int)$val;
+}
+
 // ============================================
 // BRANCH FUNCTIONS
 // ============================================
@@ -381,13 +417,15 @@ function getDefaultUserAddress($userId) {
 
 /**
  * Cancels an order and releases/restores its reserved/sold inventory back to 'in_stock'
- * at its original source branch.
+ * at the exact source branch each inventory item belongs to.
+ *
+ * Also logs a pending refund_request record for the order.
  *
  * @param PDO $pdo
  * @param int $orderId
  * @param int|null $userId Optional: user ID for customer verification (null for admin/manager override)
  * @param string $cancellationReason
- * @return array ['success' => bool, 'message' => string]
+ * @return array ['success' => bool, 'message' => string, 'refund_request_id' => int|null]
  */
 function cancelOrder($pdo, $orderId, $userId = null, $cancellationReason = 'Cancelled by user') {
     $orderId = (int)$orderId;
@@ -395,40 +433,43 @@ function cancelOrder($pdo, $orderId, $userId = null, $cancellationReason = 'Canc
         return ['success' => false, 'message' => 'Invalid order ID.'];
     }
 
+    $startedTransaction = false;
+
     try {
         if (!$pdo->inTransaction()) {
             $pdo->beginTransaction();
+            $startedTransaction = true;
         }
 
         // Lock order row for update
-        $stmt = $pdo->prepare("SELECT id, user_id, status FROM orders WHERE id = ? FOR UPDATE");
+        $stmt = $pdo->prepare("SELECT id, user_id, status, total_amount, payment_method FROM orders WHERE id = ? FOR UPDATE");
         $stmt->execute([$orderId]);
         $order = $stmt->fetch();
 
         if (!$order) {
-            if ($pdo->inTransaction()) $pdo->rollBack();
+            if ($startedTransaction) $pdo->rollBack();
             return ['success' => false, 'message' => 'Order not found.'];
         }
 
         // Verify ownership if userId is supplied
         if ($userId !== null && (int)$order['user_id'] !== (int)$userId) {
-            if ($pdo->inTransaction()) $pdo->rollBack();
+            if ($startedTransaction) $pdo->rollBack();
             return ['success' => false, 'message' => 'You do not have permission to cancel this order.'];
         }
 
         $currentStatus = $order['status'];
         if ($currentStatus === 'cancelled') {
-            if ($pdo->inTransaction()) $pdo->rollBack();
+            if ($startedTransaction) $pdo->rollBack();
             return ['success' => false, 'message' => 'Order is already cancelled.'];
         }
 
         // Customers can only cancel if pending or confirmed; shipped/delivered cannot be self-cancelled
         if ($userId !== null && !in_array($currentStatus, ['pending', 'confirmed'])) {
-            if ($pdo->inTransaction()) $pdo->rollBack();
+            if ($startedTransaction) $pdo->rollBack();
             return ['success' => false, 'message' => 'Orders that are already shipped or delivered cannot be cancelled.'];
         }
 
-        // Find all inventory items tied to this order via order_items
+        // Find all inventory items tied to this order — lock for update
         $itemStmt = $pdo->prepare("
             SELECT oi.id AS item_id, oi.inventory_id, oi.quantity,
                    i.product_id, i.branch_id, i.status AS inv_status
@@ -440,60 +481,94 @@ function cancelOrder($pdo, $orderId, $userId = null, $cancellationReason = 'Canc
         $itemStmt->execute([$orderId]);
         $items = $itemStmt->fetchAll();
 
+        // Restore each inventory unit back to its original branch
         $updateInvStmt = $pdo->prepare("
             UPDATE inventory 
             SET status = 'in_stock', 
                 reserved_until = NULL, 
                 updated_at = NOW() 
-            WHERE id = ?
+            WHERE id = ? AND branch_id = ?
         ");
 
         $logStmt = $pdo->prepare("
-            INSERT INTO inventory_logs (inventory_id, product_id, branch_id, user_id, action, old_status, new_status, quantity, notes)
+            INSERT INTO inventory_logs
+                (inventory_id, product_id, branch_id, user_id, action, old_status, new_status, quantity, notes)
             VALUES (?, ?, ?, ?, 'release', ?, 'in_stock', ?, ?)
         ");
 
         $activeUserId = $_SESSION['user_id'] ?? $order['user_id'];
 
         foreach ($items as $item) {
-            $invId = $item['inventory_id'];
-            if (!$invId) continue;
+            $invId    = $item['inventory_id'];
+            $branchId = $item['branch_id'];
+            if (!$invId || !$branchId) continue;
 
             $oldInvStatus = $item['inv_status'];
-            // Only restore if it's currently reserved or sold
+            // Only restore if reserved or sold (skip items already back in stock or defective)
             if (in_array($oldInvStatus, ['reserved', 'sold'])) {
-                $updateInvStmt->execute([$invId]);
+                $updateInvStmt->execute([$invId, $branchId]);
 
-                $note = "Stock released back to branch #{$item['branch_id']} due to order #$orderId cancellation ($cancellationReason)";
+                $note = "Stock restored to branch #{$branchId} due to cancellation of order #$orderId. Reason: $cancellationReason";
                 $logStmt->execute([
                     $invId,
                     $item['product_id'],
-                    $item['branch_id'],
+                    $branchId,
                     $activeUserId,
                     $oldInvStatus,
                     $item['quantity'] ?? 1,
-                    $note
+                    $note,
                 ]);
             }
         }
 
-        // Update order status to cancelled
-        $updateOrderStmt = $pdo->prepare("
+        // Mark order cancelled with audit note
+        $pdo->prepare("
             UPDATE orders 
             SET status = 'cancelled', 
                 notes = CONCAT(COALESCE(notes, ''), '\n[Cancellation] ', ?), 
                 updated_at = NOW() 
             WHERE id = ?
-        ");
-        $updateOrderStmt->execute([$cancellationReason, $orderId]);
+        ")->execute([$cancellationReason, $orderId]);
 
-        $pdo->commit();
-        return ['success' => true, 'message' => 'Order #' . $orderId . ' has been cancelled and stock restored to inventory.'];
+        // ── Create pending refund request (idempotent – skip if already exists) ──
+        $refundRequestId = null;
+        $checkRefund = $pdo->prepare("SELECT id FROM refund_requests WHERE order_id = ?");
+        $checkRefund->execute([$orderId]);
+        if (!$checkRefund->fetch()) {
+            $refundStmt = $pdo->prepare("
+                INSERT INTO refund_requests
+                    (order_id, user_id, amount, payment_method, reason, status, requested_at)
+                VALUES (?, ?, ?, ?, ?, 'pending', NOW())
+            ");
+            $refundStmt->execute([
+                $orderId,
+                $order['user_id'],
+                $order['total_amount'],
+                $order['payment_method'] ?? 'N/A',
+                $cancellationReason,
+            ]);
+            $refundRequestId = $pdo->lastInsertId();
+        } else {
+            $checkRefund = $pdo->prepare("SELECT id FROM refund_requests WHERE order_id = ?");
+            $checkRefund->execute([$orderId]);
+            $refundRequestId = $checkRefund->fetchColumn();
+        }
+
+        if ($startedTransaction) {
+            $pdo->commit();
+        }
+
+        return [
+            'success'           => true,
+            'message'           => "Order #$orderId has been cancelled. Stock restored to branch inventory. Refund request #$refundRequestId is pending admin review.",
+            'refund_request_id' => $refundRequestId,
+        ];
+
     } catch (Exception $e) {
-        if ($pdo->inTransaction()) {
+        if ($startedTransaction && $pdo->inTransaction()) {
             $pdo->rollBack();
         }
         return ['success' => false, 'message' => 'Failed to cancel order: ' . $e->getMessage()];
     }
 }
-
+

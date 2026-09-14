@@ -28,13 +28,61 @@ if (empty($cartItems)) {
 
 // Get form data
 $shippingAddress = trim($_POST['shipping_address'] ?? '');
-$paymentMethod = trim($_POST['payment_method'] ?? '');
-$terms = isset($_POST['terms']);
+$paymentMethod   = trim($_POST['payment_method'] ?? '');
+$walletNumber    = trim($_POST['wallet_number'] ?? '');
+$cardName        = trim($_POST['card_name'] ?? '');
+$cardNumber      = preg_replace('/\s+/', '', $_POST['card_number'] ?? '');
+$cardExpiry      = trim($_POST['card_expiry'] ?? '');
+$cardCvv         = trim($_POST['card_cvv'] ?? '');
+$terms           = isset($_POST['terms']);
 
-// Validate
+// Validate base fields
 if (empty($shippingAddress) || empty($paymentMethod) || !$terms) {
     header('Location: checkout.php?error=Please fill in all fields and agree to terms.');
     exit;
+}
+
+// ── Validate non-COD payment details ──
+$validMethods = ['cash_on_delivery', 'credit_card', 'gcash', 'paymaya'];
+if (!in_array($paymentMethod, $validMethods)) {
+    header('Location: checkout.php?error=Please select a valid payment method.');
+    exit;
+}
+
+$paymentReference = null;
+$paymentDetails   = null;
+
+if ($paymentMethod === 'gcash' || $paymentMethod === 'paymaya') {
+    if (!preg_match('/^09\d{9}$/', $walletNumber)) {
+        header('Location: checkout.php?error=Please enter a valid 11-digit mobile number for your e-wallet.');
+        exit;
+    }
+    // Mask wallet for storage: show first 3 and last 3 digits
+    $maskedWallet   = substr($walletNumber, 0, 3) . str_repeat('*', 5) . substr($walletNumber, -3);
+    $paymentDetails = $maskedWallet;
+    $paymentReference = strtoupper(substr($paymentMethod, 0, 1)) . date('YmdHis') . rand(100, 999);
+
+} elseif ($paymentMethod === 'credit_card') {
+    if (empty($cardName)) {
+        header('Location: checkout.php?error=Please enter the cardholder name.');
+        exit;
+    }
+    if (strlen($cardNumber) < 13 || strlen($cardNumber) > 19) {
+        header('Location: checkout.php?error=Please enter a valid card number.');
+        exit;
+    }
+    if (!preg_match('/^\d{2}\/\d{2}$/', $cardExpiry)) {
+        header('Location: checkout.php?error=Please enter a valid card expiry (MM/YY).');
+        exit;
+    }
+    if (strlen($cardCvv) < 3) {
+        header('Location: checkout.php?error=Please enter a valid CVV.');
+        exit;
+    }
+    // Store only last 4 digits of card — never store full card number
+    $cardLast4        = substr($cardNumber, -4);
+    $paymentDetails   = strtoupper($cardName) . ' •••• ' . $cardLast4;
+    $paymentReference = 'CC' . date('YmdHis') . rand(100, 999);
 }
 
 // Validate branch quantities
@@ -105,12 +153,12 @@ try {
 
     // Create order with primary branch reference (or NULL if multi-branch)
     $stmt = $pdo->prepare("
-        INSERT INTO orders (user_id, branch_id, total_amount, status, payment_method, shipping_address, notes)
-        VALUES (?, ?, ?, 'pending', ?, ?, ?)
+        INSERT INTO orders (user_id, branch_id, total_amount, status, payment_method, payment_reference, payment_details, shipping_address, notes)
+        VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?)
     ");
     $totalAmount = getCartTotal($pdo, $cartId);
     $notes = count($branchKeys) > 1 ? "Multi-branch order. Items allocated across multiple branches." : "Standard order.";
-    $stmt->execute([$userId, $primaryBranchId, $totalAmount, $paymentMethod, $shippingAddress, $notes]);
+    $stmt->execute([$userId, $primaryBranchId, $totalAmount, $paymentMethod, $paymentReference, $paymentDetails, $shippingAddress, $notes]);
     $orderId = $pdo->lastInsertId();
 
     // Reserve inventory and create order_items

@@ -23,6 +23,8 @@ $sql = "
         o.total_amount,
         o.status,
         o.payment_method,
+        o.payment_reference,
+        o.payment_details,
         o.shipping_address,
         b.name AS branch_name,
         b.address AS branch_address
@@ -109,6 +111,18 @@ include __DIR__ . '/../src/Views/layouts/header.php';
                             <p style="color: var(--gray-dark); font-size: 12px; text-transform: uppercase; letter-spacing: 1px;">Payment Method</p>
                             <p style="font-weight: 700;"><?= htmlspecialchars($order['payment_method'] ?? 'N/A') ?></p>
                         </div>
+                        <?php if (!empty($order['payment_reference'])): ?>
+                        <div>
+                            <p style="color: var(--gray-dark); font-size: 12px; text-transform: uppercase; letter-spacing: 1px;">Payment Reference</p>
+                            <p style="font-weight: 700; font-family: monospace; letter-spacing: 0.5px;"><?= htmlspecialchars($order['payment_reference']) ?></p>
+                        </div>
+                        <?php endif; ?>
+                        <?php if (!empty($order['payment_details'])): ?>
+                        <div>
+                            <p style="color: var(--gray-dark); font-size: 12px; text-transform: uppercase; letter-spacing: 1px;">Payment Info</p>
+                            <p style="font-weight: 700;"><?= htmlspecialchars($order['payment_details']) ?></p>
+                        </div>
+                        <?php endif; ?>
                     </div>
                     <?php if ($order['shipping_address']): ?>
                         <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--gray);">
