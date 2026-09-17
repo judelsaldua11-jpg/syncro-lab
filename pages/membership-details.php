@@ -1,13 +1,13 @@
 <?php
-// pages/membership-details.php - Membership Details
+// pages/membership-details.php - Membership Details (Overview)
 
 session_start();
 require_once __DIR__ . '/../database/config.php';
 require_once __DIR__ . '/../inc/functions.php';
 
 $isLoggedIn = isset($_SESSION['user_id']);
-$userId = $_SESSION['user_id'] ?? null;
-$isMember = false;
+$userId     = $_SESSION['user_id'] ?? null;
+$isMember   = false;
 $memberData = null;
 $lastPayment = null;
 
@@ -15,65 +15,37 @@ if ($isLoggedIn) {
     $isMember = isMembershipActive($userId);
     $pdo = getConnection();
 
-    if ($isMember) {
-        // Get membership dates
-        $stmt = $pdo->prepare("SELECT membership_start, membership_expiry FROM users WHERE id = ?");
-        $stmt->execute([$userId]);
-        $memberData = $stmt->fetch();
+    $stmt = $pdo->prepare("SELECT membership_start, membership_expiry FROM users WHERE id = ?");
+    $stmt->execute([$userId]);
+    $memberData = $stmt->fetch();
 
-        // Get last verified payment (includes benefits claimed)
+    if ($isMember) {
         $stmtPay = $pdo->prepare("
-            SELECT payment_method, reference_number, wallet_number, card_last4, verified_at,
-                   bike_fit_claimed, deep_clean_claimed, id AS payment_id
+            SELECT payment_method, reference_number, wallet_number, card_last4, verified_at, id AS payment_id
             FROM membership_payments
             WHERE user_id = ? AND status = 'verified'
             ORDER BY verified_at DESC LIMIT 1
         ");
         $stmtPay->execute([$userId]);
         $lastPayment = $stmtPay->fetch();
-    } else {
-        // Check for expired membership to show info
-        $stmt = $pdo->prepare("SELECT membership_start, membership_expiry FROM users WHERE id = ?");
-        $stmt->execute([$userId]);
-        $memberData = $stmt->fetch();
     }
 }
 
-// Handle benefit claim actions (POST)
-if ($isLoggedIn && $isMember && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['claim_benefit'])) {
-    $pdo = getConnection();
-    $benefit = $_POST['claim_benefit'];
-    $paymentId = (int)($_POST['payment_id'] ?? 0);
-
-    // Verify this payment belongs to this user
-    $checkStmt = $pdo->prepare("SELECT id FROM membership_payments WHERE id = ? AND user_id = ? AND status = 'verified'");
-    $checkStmt->execute([$paymentId, $userId]);
-    if ($checkStmt->fetch()) {
-        if ($benefit === 'bike_fit') {
-            $pdo->prepare("UPDATE membership_payments SET bike_fit_claimed = 1 WHERE id = ?")->execute([$paymentId]);
-        } elseif ($benefit === 'deep_clean') {
-            $pdo->prepare("UPDATE membership_payments SET deep_clean_claimed = 1 WHERE id = ?")->execute([$paymentId]);
-        }
-        header('Location: membership-details.php?success=Benefit+claimed+successfully!');
-        exit;
-    }
-}
-
-// Compute membership duration info
+/* Membership duration + remaining days */
 $daysRemaining = null;
 $durationLabel = null;
 if ($isMember && $memberData) {
-    $now = new DateTime();
+    $now    = new DateTime();
     $expiry = new DateTime($memberData['membership_expiry']);
     $start  = new DateTime($memberData['membership_start']);
-    $diff   = $now->diff($expiry);
-    $daysRemaining = (int)$diff->format('%a');
-    $totalDays = (int)$now->diff($expiry, false)->days;
 
-    // Duration from start to expiry
+    $daysRemaining = (int)$now->diff($expiry)->format('%a');
+
     $totalDuration = $start->diff($expiry);
     $durationLabel = $totalDuration->y . ' year' . ($totalDuration->y !== 1 ? 's' : '');
-    if ($totalDuration->m > 0) $durationLabel .= ', ' . $totalDuration->m . ' month' . ($totalDuration->m !== 1 ? 's' : '');
+    if ($totalDuration->m > 0) {
+        $durationLabel .= ', ' . $totalDuration->m . ' month' . ($totalDuration->m !== 1 ? 's' : '');
+    }
 }
 
 include __DIR__ . '/../src/Views/layouts/header.php';
@@ -94,7 +66,7 @@ include __DIR__ . '/../src/Views/layouts/header.php';
     transform: translateY(-2px);
     box-shadow: 0 6px 20px rgba(0,0,0,0.1);
 }
-.benefit-card .claimed-badge {
+.benefit-card .included-badge {
     position: absolute;
     top: 10px;
     right: 10px;
@@ -105,32 +77,6 @@ include __DIR__ . '/../src/Views/layouts/header.php';
     padding: 2px 8px;
     border-radius: 10px;
 }
-.benefit-card .unclaimed-badge {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    background: #fff8e1;
-    color: #7b6100;
-    font-size: 11px;
-    font-weight: 700;
-    padding: 2px 8px;
-    border-radius: 10px;
-}
-.claim-btn {
-    display: inline-block;
-    margin-top: 12px;
-    background: var(--green);
-    color: #fff;
-    border: none;
-    border-radius: var(--radius);
-    padding: 8px 18px;
-    font-size: 13px;
-    font-weight: 700;
-    cursor: pointer;
-    text-decoration: none;
-    transition: opacity 0.15s;
-}
-.claim-btn:hover { opacity: 0.85; }
 .membership-progress {
     background: var(--gray);
     border-radius: 100px;
@@ -149,7 +95,7 @@ include __DIR__ . '/../src/Views/layouts/header.php';
 <div style="padding: 60px 0; color: var(--dark); min-height: 60vh; background: var(--light);">
     <div style="max-width: 1100px; margin: 0 auto; padding: 0 40px;">
 
-        <!-- Hero Section -->
+        <!-- Hero -->
         <div style="text-align: center; margin-bottom: 48px;">
             <p style="color: var(--green); font-family: var(--font-heading); font-size: 14px; text-transform: uppercase; letter-spacing: 2px;">
                 Exclusive Program
@@ -162,7 +108,7 @@ include __DIR__ . '/../src/Views/layouts/header.php';
             </p>
         </div>
 
-        <!-- Flash Messages -->
+        <!-- Flash -->
         <?php if (!empty($_GET['success'])): ?>
             <div style="background: #e8f5e9; color: #2e7d32; padding: 16px 24px; border-radius: var(--radius); border-left: 4px solid var(--green); margin-bottom: 32px;">
                 ✅ <?= htmlspecialchars($_GET['success']) ?>
@@ -173,17 +119,16 @@ include __DIR__ . '/../src/Views/layouts/header.php';
             </div>
         <?php endif; ?>
 
-        <!-- ─── ACTIVE MEMBER STATUS CARD ─── -->
+        <!-- ACTIVE MEMBER CARD -->
         <?php if ($isLoggedIn && $isMember && $memberData): ?>
             <?php
             $startFormatted  = date('F d, Y', strtotime($memberData['membership_start']));
             $expiryFormatted = date('F d, Y', strtotime($memberData['membership_expiry']));
 
-            // Progress bar: % of year elapsed
-            $totalSec = strtotime($memberData['membership_expiry']) - strtotime($memberData['membership_start']);
-            $elapsedSec = time() - strtotime($memberData['membership_start']);
+            $totalSec    = strtotime($memberData['membership_expiry']) - strtotime($memberData['membership_start']);
+            $elapsedSec  = time() - strtotime($memberData['membership_start']);
             $progressPct = max(0, min(100, round(($elapsedSec / $totalSec) * 100)));
-            $remainPct = 100 - $progressPct;
+            $remainPct   = 100 - $progressPct;
             ?>
             <div style="background: #fff; border: 2px solid var(--green); border-radius: var(--radius); padding: 28px 32px; margin-bottom: 40px; box-shadow: var(--shadow);">
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
@@ -204,7 +149,7 @@ include __DIR__ . '/../src/Views/layouts/header.php';
                     </div>
                 </div>
 
-                <!-- Progress Bar -->
+                <!-- Progress -->
                 <div style="margin-top: 20px;">
                     <div style="display: flex; justify-content: space-between; font-size: 12px; color: var(--gray-dark); margin-bottom: 6px;">
                         <span>Started <?= $startFormatted ?></span>
@@ -241,7 +186,7 @@ include __DIR__ . '/../src/Views/layouts/header.php';
             <?php if ($memberData && $memberData['membership_expiry']): ?>
                 <div style="background: #fff3cd; color: #856404; padding: 16px 24px; border-radius: var(--radius); border-left: 4px solid #f0ad4e; margin-bottom: 40px;">
                     <strong>⏳ Membership Expired</strong>
-                    &nbsp;— your membership ended on <strong><?= date('F d, Y', strtotime($memberData['membership_expiry'])) ?></strong>.
+                    — your membership ended on <strong><?= date('F d, Y', strtotime($memberData['membership_expiry'])) ?></strong>.
                     Renew to continue enjoying benefits.
                 </div>
             <?php else: ?>
@@ -251,15 +196,12 @@ include __DIR__ . '/../src/Views/layouts/header.php';
             <?php endif; ?>
         <?php endif; ?>
 
-        <!-- ─── BENEFITS GRID ─── -->
+        <!-- BENEFITS GRID (overview only) -->
         <h2 style="font-family: var(--font-heading); font-size: 28px; text-transform: uppercase; margin-bottom: 20px;">Member Benefits</h2>
         <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; margin-bottom: 48px;">
 
-            <!-- Benefit: Fast Service (auto – no claim needed) -->
             <div class="benefit-card">
-                <?php if ($isMember): ?>
-                    <span class="claimed-badge">✓ Included</span>
-                <?php endif; ?>
+                <?php if ($isMember): ?><span class="included-badge">✓ Included</span><?php endif; ?>
                 <div style="font-size: 48px; margin-bottom: 16px;">⚡</div>
                 <h3 style="font-family: var(--font-heading); font-size: 18px; text-transform: uppercase; margin-bottom: 8px;">Fast Service</h3>
                 <p style="color: var(--gray-dark); font-size: 14px; line-height: 1.6;">
@@ -267,11 +209,8 @@ include __DIR__ . '/../src/Views/layouts/header.php';
                 </p>
             </div>
 
-            <!-- Benefit: 10% Discount (auto – no claim needed) -->
             <div class="benefit-card">
-                <?php if ($isMember): ?>
-                    <span class="claimed-badge">✓ Included</span>
-                <?php endif; ?>
+                <?php if ($isMember): ?><span class="included-badge">✓ Included</span><?php endif; ?>
                 <div style="font-size: 48px; margin-bottom: 16px;">💰</div>
                 <h3 style="font-family: var(--font-heading); font-size: 18px; text-transform: uppercase; margin-bottom: 8px;">10% Discount</h3>
                 <p style="color: var(--gray-dark); font-size: 14px; line-height: 1.6;">
@@ -279,69 +218,33 @@ include __DIR__ . '/../src/Views/layouts/header.php';
                 </p>
             </div>
 
-            <!-- Benefit: Free Bike Fit (claimable once) -->
             <div class="benefit-card">
-                <?php if ($isMember && $lastPayment): ?>
-                    <?php if ($lastPayment['bike_fit_claimed']): ?>
-                        <span class="claimed-badge">✅ Claimed</span>
-                    <?php else: ?>
-                        <span class="unclaimed-badge">⏳ Unclaimed</span>
-                    <?php endif; ?>
-                <?php endif; ?>
+                <?php if ($isMember): ?><span class="included-badge">✓ Included</span><?php endif; ?>
                 <div style="font-size: 48px; margin-bottom: 16px;">🚴</div>
                 <h3 style="font-family: var(--font-heading); font-size: 18px; text-transform: uppercase; margin-bottom: 8px;">Free Bike Fit</h3>
                 <p style="color: var(--gray-dark); font-size: 14px; line-height: 1.6;">
                     Annual <strong>laser bike fit</strong> session included with membership.
                 </p>
-                <?php if ($isMember && $lastPayment): ?>
-                    <?php if (!$lastPayment['bike_fit_claimed']): ?>
-                        <form method="POST" onsubmit="return confirm('Claim your free Bike Fit session? This can only be done once per membership year.');">
-                            <input type="hidden" name="claim_benefit" value="bike_fit">
-                            <input type="hidden" name="payment_id" value="<?= $lastPayment['payment_id'] ?>">
-                            <button type="submit" class="claim-btn">Claim Now</button>
-                        </form>
-                    <?php else: ?>
-                        <p style="font-size: 12px; color: #2e7d32; margin-top: 10px; font-weight: 700;">Benefit used this year ✓</p>
-                    <?php endif; ?>
-                <?php endif; ?>
             </div>
 
-            <!-- Benefit: Deep Clean (claimable once) -->
             <div class="benefit-card">
-                <?php if ($isMember && $lastPayment): ?>
-                    <?php if ($lastPayment['deep_clean_claimed']): ?>
-                        <span class="claimed-badge">✅ Claimed</span>
-                    <?php else: ?>
-                        <span class="unclaimed-badge">⏳ Unclaimed</span>
-                    <?php endif; ?>
-                <?php endif; ?>
+                <?php if ($isMember): ?><span class="included-badge">✓ Included</span><?php endif; ?>
                 <div style="font-size: 48px; margin-bottom: 16px;">🧼</div>
                 <h3 style="font-family: var(--font-heading); font-size: 18px; text-transform: uppercase; margin-bottom: 8px;">Deep Clean</h3>
                 <p style="color: var(--gray-dark); font-size: 14px; line-height: 1.6;">
                     <strong>Free deep clean</strong> service once per year.
                 </p>
-                <?php if ($isMember && $lastPayment): ?>
-                    <?php if (!$lastPayment['deep_clean_claimed']): ?>
-                        <form method="POST" onsubmit="return confirm('Claim your free Deep Clean service? This can only be done once per membership year.');">
-                            <input type="hidden" name="claim_benefit" value="deep_clean">
-                            <input type="hidden" name="payment_id" value="<?= $lastPayment['payment_id'] ?>">
-                            <button type="submit" class="claim-btn">Claim Now</button>
-                        </form>
-                    <?php else: ?>
-                        <p style="font-size: 12px; color: #2e7d32; margin-top: 10px; font-weight: 700;">Benefit used this year ✓</p>
-                    <?php endif; ?>
-                <?php endif; ?>
             </div>
 
         </div>
 
-        <!-- ─── PRICING & CTA ─── -->
+        <!-- PRICING & CTA -->
         <div style="background: var(--dark); border-radius: var(--radius); padding: 48px; text-align: center; box-shadow: var(--shadow);">
             <h2 style="font-family: var(--font-heading); font-size: 36px; color: var(--green); text-transform: uppercase; margin-bottom: 8px;">
                 <?= $isMember ? 'Renew Your Membership' : 'Join Today' ?>
             </h2>
-            <?php 
-            $mPrice = getMembershipPrice();
+            <?php
+            $mPrice  = getMembershipPrice();
             $mMonths = getMembershipDurationMonths();
             $durationText = ($mMonths === 12) ? 'year' : ($mMonths . ' months');
             ?>
@@ -374,7 +277,6 @@ include __DIR__ . '/../src/Views/layouts/header.php';
             <?php endif; ?>
         </div>
 
-        <!-- Back to Services -->
         <p style="margin-top: 40px;">
             <a href="/syncro lab/index.php#services" style="color: var(--green); font-weight: 700;">&larr; Back to Services</a>
         </p>

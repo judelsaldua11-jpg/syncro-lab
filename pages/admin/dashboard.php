@@ -2,11 +2,11 @@
 // pages/admin/dashboard.php — Unified Dashboard (HQ Admin + Branch Manager)
 
 error_reporting(E_ALL);
-ini_set('display_errors', 0);      // CHANGED: never show raw errors to users
-ini_set('log_errors', 1);          // CHANGED: log instead
-ini_set('error_log', __DIR__ . '/../../logs/app_errors.log'); // CHANGED: make sure this dir exists & is writable
+ini_set('display_errors', 0);
+ini_set('log_errors', 1);
+ini_set('error_log', __DIR__ . '/../../logs/app_errors.log');
 
-if (session_status() === PHP_SESSION_NONE) { // CHANGED: guard against double session_start()
+if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 require_once __DIR__ . '/../../database/config.php';
@@ -31,16 +31,32 @@ $pdo        = getConnection();
 $msg        = '';
 $err        = '';
 
-/* CHANGED: CSRF token setup */
+/* CSRF token */
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
 $csrfToken = $_SESSION['csrf_token'];
 
+/* ═══════════════════════════════════════════════════════════
+   CONFIG
+   ═══════════════════════════════════════════════════════════ */
+$PAYMENT_LABELS = [
+    'cash_on_delivery' => 'Cash on Delivery',
+    'credit_card'      => 'Credit Card',
+    'gcash'            => 'GCash',
+    'paymaya'          => 'PayMaya',
+];
+
+$BENEFIT_LABELS = [
+    'discount_10'      => '10% Discount',
+    'annual_bike_fit'  => 'Annual Bike Fit',
+    'deep_clean'       => 'Deep Clean',
+    'priority_booking' => 'Priority Booking',
+    'other'            => 'Other',
+];
+
 /* ── 2. POST ACTIONS ───────────────────────────────────────── */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-
-    /* CHANGED: CSRF check applies to every POST action on this page */
     if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
         http_response_code(403);
         exit('Invalid or expired request. Please refresh the page and try again.');
@@ -78,9 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($decision === 'approved' && $refund['order_status'] !== 'cancelled') {
                     $by  = $isAdmin ? 'HQ Admin' : 'Branch Manager';
                     $res = cancelOrder($pdo, $refund['order_id'], null, "Refund approved by {$by}");
-                    if (!$res['success']) {
-                        throw new Exception('Order cancel failed: ' . $res['message']);
-                    }
+                    if (!$res['success']) throw new Exception('Order cancel failed: ' . $res['message']);
                 }
 
                 $pdo->commit();
@@ -136,6 +150,11 @@ $stats = [
     'pending_refunds'  => (int)$fetch("SELECT COUNT(*) FROM refund_requests rr
                             JOIN orders o ON rr.order_id = o.id
                             WHERE rr.status='pending'" . ($isAdmin ? '' : ' AND o.branch_id = ?'), $params),
+    // NEW: membership claims this month
+    'claims_mtd'       => (int)$fetch("SELECT COUNT(*) FROM membership_claims
+                            WHERE MONTH(claim_date)=MONTH(CURRENT_DATE())
+                              AND YEAR(claim_date)=YEAR(CURRENT_DATE())"
+                            . ($isAdmin ? '' : ' AND branch_id = ?'), $params),
 ];
 
 if ($isAdmin) {
@@ -145,29 +164,7 @@ if ($isAdmin) {
     $memberDuration = getMembershipDurationMonths();
 }
 
-/* ── 4. LISTS ──────────────────────────────────────────────── */
-$branchFilter = $isAdmin ? '' : ' AND o.branch_id = ?';
-$bp           = $isAdmin ? [] : [$branchId];
-
-$s = $pdo->prepare("SELECT o.id, o.order_date, o.total_amount, u.full_name, b.name AS branch_name
-                    FROM orders o
-                    JOIN users u ON o.user_id = u.id
-                    LEFT JOIN branches b ON o.branch_id = b.id
-                    WHERE o.status='pending' {$branchFilter}
-                    ORDER BY o.order_date DESC LIMIT 5");
-$s->execute($bp);
-$pendingOrders = $s->fetchAll();
-
-$s = $pdo->prepare("SELECT sb.id, sb.scheduled_date, sb.service_type, sb.status, u.full_name, b.name AS branch_name
-                    FROM service_bookings sb
-                    JOIN users u ON sb.user_id = u.id
-                    JOIN branches b ON sb.branch_id = b.id
-                    WHERE sb.status IN ('pending','confirmed')" . ($isAdmin ? '' : ' AND sb.branch_id = ?') . "
-                    ORDER BY sb.scheduled_date ASC LIMIT 5");
-$s->execute($bp);
-$upcomingBookings = $s->fetchAll();
-
-/* Refund list (with filters) */
+/* ── Refund list (with filters) ── */
 $rfBranch  = $isAdmin ? (int)($_GET['rf_branch'] ?? 0) : 0;
 $rfPayment = trim($_GET['rf_payment'] ?? '');
 
@@ -188,8 +185,31 @@ $s = $pdo->prepare($sql);
 $s->execute($p);
 $refunds = $s->fetchAll();
 
-/* Activity log */
-$afAction = $_GET['filter_action'] ?? '';
+/* ── NEW: Membership claims list (with filters) ── */
+$claimBranch  = $isAdmin ? (int)($_GET['cl_branch'] ?? 0) : 0;
+$claimBenefit = trim($_GET['cl_benefit'] ?? '');
+
+$sql = "SELECT mc.id, mc.benefit_type, mc.claim_date, mc.notes,
+               mc.related_order_id, mc.related_booking_id,
+               u.full_name AS member_name, u.email AS member_email,
+             b.name      AS branch_name
+        FROM membership_claims mc
+        JOIN users u       ON mc.user_id      = u.id
+        LEFT JOIN branches b ON mc.branch_id  = b.id
+        WHERE 1=1";
+$p = [];
+if (!$isAdmin)         { $sql .= " AND mc.branch_id = ?";       $p[] = $branchId; }
+elseif ($claimBranch > 0) { $sql .= " AND mc.branch_id = ?";    $p[] = $claimBranch; }
+if ($claimBenefit !== '') { $sql .= " AND mc.benefit_type = ?"; $p[] = $claimBenefit; }
+$sql .= " ORDER BY mc.claim_date DESC LIMIT 30";
+$s = $pdo->prepare($sql);
+$s->execute($p);
+$claimsList = $s->fetchAll();
+
+/* ── Activity log ── */
+$activityActions = ['add', 'update_status', 'reserve', 'release'];
+$afAction = trim($_GET['filter_action'] ?? '');
+if (!in_array($afAction, $activityActions, true)) $afAction = '';
 $sql = "SELECT l.*, u.full_name AS user_name, p.name AS product_name, b.name AS branch_name
         FROM inventory_logs l
         LEFT JOIN users u    ON l.user_id    = u.id
@@ -205,13 +225,16 @@ $activityLogs = $s->fetchAll();
 
 include __DIR__ . '/../../src/Views/layouts/header.php';
 
-$card = 'background:#fff;border-radius:var(--radius);border:1px solid var(--gray);box-shadow:var(--shadow);';
-$kpiColor = fn($n) => $n > 0 ? '#f0ad4e' : 'var(--dark)';
+$card      = 'background:#fff;border-radius:var(--radius);border:1px solid var(--gray);box-shadow:var(--shadow);';
+$kpiColor  = fn($n) => $n > 0 ? '#f0ad4e' : 'var(--dark)';
+$pillStyle = 'display:inline-block;font-size:11px;font-weight:700;background:var(--light);border:1px solid var(--gray);border-radius:20px;padding:3px 9px;white-space:nowrap;';
+$filterInput = 'height:34px;padding:0 10px;border:1px solid var(--gray);border-radius:var(--radius);font-size:13px;background:#fff;';
 ?>
 
 <div style="padding:40px 0 60px;background:var(--light);min-height:70vh;color:var(--dark);">
 <div style="max-width:1280px;margin:0 auto;padding:0 40px;">
 
+    <!-- HEADER -->
     <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:16px;margin-bottom:24px;">
         <div>
             <h1 style="font-family:var(--font-heading);font-size:42px;text-transform:uppercase;margin:0 0 6px;">Dashboard</h1>
@@ -230,6 +253,7 @@ $kpiColor = fn($n) => $n > 0 ? '#f0ad4e' : 'var(--dark)';
         </div>
     </div>
 
+    <!-- FLASH -->
     <?php if ($msg): ?>
         <div style="background:#e8f5e9;color:#2e7d32;padding:14px 20px;border-radius:var(--radius);border-left:4px solid var(--green);margin-bottom:20px;font-weight:600;">✓ <?= htmlspecialchars($msg) ?></div>
     <?php endif; ?>
@@ -260,6 +284,18 @@ $kpiColor = fn($n) => $n > 0 ? '#f0ad4e' : 'var(--dark)';
                 <?php endif; ?>
             </p>
         </div>
+
+        <!-- NEW: Claims This Month -->
+        <div style="<?= $card ?>padding:20px;border-color:<?= $stats['claims_mtd'] > 0 ? '#a5d6a7' : 'var(--gray)' ?>;">
+            <p style="color:var(--gray-dark);font-size:12px;text-transform:uppercase;font-weight:700;margin:0 0 6px;">💎 Claims (This Month)</p>
+            <p style="font-family:var(--font-heading);font-size:28px;color:<?= $stats['claims_mtd'] > 0 ? '#2e7d32' : 'var(--dark)' ?>;margin:0;">
+                <?= number_format($stats['claims_mtd']) ?>
+                <?php if ($stats['claims_mtd'] > 0): ?>
+                    <a href="#claims-log" style="font-size:13px;color:var(--green);font-weight:700;margin-left:8px;text-decoration:none;">View →</a>
+                <?php endif; ?>
+            </p>
+        </div>
+
         <div style="<?= $card ?>padding:20px;">
             <p style="color:var(--gray-dark);font-size:12px;text-transform:uppercase;font-weight:700;margin:0 0 6px;">Stock</p>
             <p style="font-family:var(--font-heading);font-size:28px;margin:0;"><?= number_format($stats['stock']) ?></p>
@@ -297,57 +333,6 @@ $kpiColor = fn($n) => $n > 0 ? '#f0ad4e' : 'var(--dark)';
         </div>
     </div>
 
-    <!-- ORDERS + BOOKINGS -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px;">
-        <div style="<?= $card ?>padding:20px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-                <h3 style="font-family:var(--font-heading);font-size:18px;text-transform:uppercase;margin:0;">⚡ Pending Orders</h3>
-                <a href="orders.php?status=pending" style="color:var(--green);font-size:12px;font-weight:700;">View All →</a>
-            </div>
-            <?php if (empty($pendingOrders)): ?>
-                <p style="color:var(--gray-dark);font-size:13px;text-align:center;padding:20px 0;">No pending orders. ✅</p>
-            <?php else: foreach ($pendingOrders as $o): ?>
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--light);border-radius:var(--radius);border-left:3px solid #f0ad4e;margin-bottom:8px;">
-                    <div>
-                        <strong style="font-size:14px;">Order #<?= str_pad((string)$o['id'], 5, '0', STR_PAD_LEFT) ?></strong> — <?= htmlspecialchars($o['full_name']) ?>
-                        <div style="font-size:11px;color:var(--gray-dark);">
-                            <?= htmlspecialchars($o['branch_name'] ?? 'Multi-Branch') ?> &bull; <?= date('M d, h:i A', strtotime($o['order_date'])) ?>
-                        </div>
-                    </div>
-                    <div style="text-align:right;">
-                        <strong style="font-size:14px;">₱ <?= number_format($o['total_amount'], 2) ?></strong><br>
-                        <a href="orders.php?search=<?= (int)$o['id'] ?>" class="btn btn--small btn--outline" style="height:24px;font-size:11px;padding:0 8px;margin-top:4px;">Manage</a>
-                    </div>
-                </div>
-            <?php endforeach; endif; ?>
-        </div>
-
-        <div style="<?= $card ?>padding:20px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-                <h3 style="font-family:var(--font-heading);font-size:18px;text-transform:uppercase;margin:0;">🛠️ Upcoming Bookings</h3>
-                <a href="bookings.php" style="color:var(--green);font-size:12px;font-weight:700;">View All →</a>
-            </div>
-            <?php if (empty($upcomingBookings)): ?>
-                <p style="color:var(--gray-dark);font-size:13px;text-align:center;padding:20px 0;">No upcoming bookings. ✅</p>
-            <?php else: foreach ($upcomingBookings as $b):
-                $c = $b['status'] === 'pending' ? '#f0ad4e' : '#0275d8';
-            ?>
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--light);border-radius:var(--radius);border-left:3px solid <?= $c ?>;margin-bottom:8px;">
-                    <div>
-                        <strong style="font-size:14px;"><?= htmlspecialchars($b['full_name']) ?></strong>
-                        <div style="font-size:11px;color:var(--gray-dark);">
-                            <?= htmlspecialchars(str_replace('_', ' ', $b['service_type'])) ?> &bull; <?= date('M d, h:i A', strtotime($b['scheduled_date'])) ?>
-                        </div>
-                    </div>
-                    <div style="text-align:right;">
-                        <span style="font-size:11px;font-weight:700;text-transform:uppercase;color:<?= $c ?>;"><?= htmlspecialchars(ucfirst($b['status'])) ?></span><br>
-                        <a href="bookings.php?status=<?= urlencode($b['status']) ?>" class="btn btn--small btn--outline" style="height:24px;font-size:11px;padding:0 8px;margin-top:4px;">Manage</a>
-                    </div>
-                </div>
-            <?php endforeach; endif; ?>
-        </div>
-    </div>
-
     <!-- REFUND PANEL -->
     <div id="refund-panel" style="<?= $card ?>margin-bottom:24px;overflow:hidden;border-color:<?= $stats['pending_refunds'] > 0 ? '#c0392b' : 'var(--gray)' ?>;">
         <div style="padding:18px 24px;background:<?= $stats['pending_refunds'] > 0 ? '#fdf2f2' : 'var(--light)' ?>;border-bottom:1px solid var(--gray);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
@@ -370,16 +355,16 @@ $kpiColor = fn($n) => $n > 0 ? '#f0ad4e' : 'var(--dark)';
             <form method="GET" action="#refund-panel" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
                 <input type="hidden" name="section" value="refunds">
                 <?php if ($isAdmin): ?>
-                    <select name="rf_branch" style="height:34px;padding:0 10px;border:1px solid var(--gray);border-radius:var(--radius);font-size:13px;background:#fff;">
+                    <select name="rf_branch" style="<?= $filterInput ?>">
                         <option value="0">All Branches</option>
                         <?php foreach (getBranches() as $b): ?>
                             <option value="<?= (int)$b['id'] ?>" <?= $rfBranch === (int)$b['id'] ? 'selected' : '' ?>><?= htmlspecialchars($b['name']) ?></option>
                         <?php endforeach; ?>
                     </select>
                 <?php endif; ?>
-                <select name="rf_payment" style="height:34px;padding:0 10px;border:1px solid var(--gray);border-radius:var(--radius);font-size:13px;background:#fff;">
+                <select name="rf_payment" style="<?= $filterInput ?>">
                     <option value="">All Payment Methods</option>
-                    <?php foreach (['cod'=>'Cash on Delivery','gcash'=>'GCash','bank'=>'Bank','card'=>'Card'] as $v => $l): ?>
+                    <?php foreach ($PAYMENT_LABELS as $v => $l): ?>
                         <option value="<?= htmlspecialchars($v) ?>" <?= $rfPayment === $v ? 'selected' : '' ?>><?= htmlspecialchars($l) ?></option>
                     <?php endforeach; ?>
                 </select>
@@ -400,12 +385,15 @@ $kpiColor = fn($n) => $n > 0 ? '#f0ad4e' : 'var(--dark)';
                             <th style="padding:12px 14px;text-align:left;">Branch</th>
                             <th style="padding:12px 14px;text-align:left;">Order</th>
                             <th style="padding:12px 14px;text-align:left;">Amount</th>
+                            <th style="padding:12px 14px;text-align:left;">Payment</th>
                             <th style="padding:12px 14px;text-align:left;">Reason</th>
                             <th style="padding:12px 14px;text-align:left;min-width:260px;">Action</th>
                         </tr>
                     </thead>
                     <tbody>
-                    <?php foreach ($refunds as $r): ?>
+                    <?php foreach ($refunds as $r):
+                        $pmLabel = $PAYMENT_LABELS[strtolower($r['payment_method'] ?? '')] ?? strtoupper($r['payment_method'] ?? '—');
+                    ?>
                         <tr style="border-bottom:1px solid var(--gray);">
                             <td style="padding:12px 14px;font-weight:700;">#<?= str_pad((string)$r['refund_id'], 5, '0', STR_PAD_LEFT) ?></td>
                             <td style="padding:12px 14px;">
@@ -417,6 +405,9 @@ $kpiColor = fn($n) => $n > 0 ? '#f0ad4e' : 'var(--dark)';
                                 <a href="orders.php?search=<?= (int)$r['order_id'] ?>" style="color:var(--green);font-weight:700;text-decoration:none;">#<?= str_pad((string)$r['order_id'], 5, '0', STR_PAD_LEFT) ?></a>
                             </td>
                             <td style="padding:12px 14px;font-weight:700;">₱ <?= number_format($r['amount'], 2) ?></td>
+                            <td style="padding:12px 14px;">
+                                <span style="<?= $pillStyle ?>"><?= htmlspecialchars($pmLabel) ?></span>
+                            </td>
                             <td style="padding:12px 14px;max-width:220px;font-size:12px;" title="<?= htmlspecialchars($r['reason']) ?>">
                                 <?= htmlspecialchars(mb_strimwidth($r['reason'], 0, 90, '…')) ?>
                             </td>
@@ -443,6 +434,125 @@ $kpiColor = fn($n) => $n > 0 ? '#f0ad4e' : 'var(--dark)';
             </div>
         <?php endif; ?>
     </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         NEW: RECENT MEMBERSHIP CLAIMS
+         ═══════════════════════════════════════════════════════ -->
+    <div id="claims-log" style="<?= $card ?>margin-bottom:24px;overflow:hidden;scroll-margin-top:100px;">
+        <div style="padding:18px 24px;background:var(--light);border-bottom:1px solid var(--gray);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+            <div style="display:flex;align-items:center;gap:12px;">
+                <span style="font-size:22px;">🎫</span>
+                <div>
+                    <h3 style="font-family:var(--font-heading);font-size:20px;text-transform:uppercase;margin:0;">
+                        Recent Membership Claims
+                        <?php if ($stats['claims_mtd'] > 0): ?>
+                            <span style="font-size:12px;background:#2e7d32;color:#fff;border-radius:20px;padding:3px 10px;margin-left:8px;">
+                                <?= $stats['claims_mtd'] ?> this month
+                            </span>
+                        <?php endif; ?>
+                    </h3>
+                    <p style="font-size:12px;color:var(--gray-dark);margin:2px 0 0;">
+                        Every benefit redemption across <?= $isAdmin ? 'all branches' : 'your branch' ?>
+                    </p>
+                </div>
+            </div>
+            <?php if ($isAdmin): ?>
+                <a href="bookings.php" class="btn btn--outline btn--small" style="height:34px;font-size:13px;padding:0 14px;">Manage Bookings →</a>
+            <?php endif; ?>
+        </div>
+
+        <!-- Filters -->
+        <div style="padding:12px 20px;background:var(--light);border-bottom:1px solid var(--gray);">
+            <form method="GET" action="#claims-log" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                <input type="hidden" name="section" value="claims">
+
+                <?php if ($isAdmin): ?>
+                    <select name="cl_branch" style="<?= $filterInput ?>">
+                        <option value="0">All Branches</option>
+                        <?php foreach (getBranches() as $b): ?>
+                            <option value="<?= (int)$b['id'] ?>" <?= $claimBranch === (int)$b['id'] ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($b['name']) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                <?php endif; ?>
+
+                <select name="cl_benefit" style="<?= $filterInput ?>">
+                    <option value="">All Benefit Types</option>
+                    <?php foreach ($BENEFIT_LABELS as $v => $l): ?>
+                        <option value="<?= htmlspecialchars($v) ?>" <?= $claimBenefit === $v ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($l) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+
+                <button type="submit" class="btn btn--green btn--small" style="height:34px;font-size:13px;padding:0 16px;">Filter</button>
+                <a href="dashboard.php#claims-log" class="btn btn--outline btn--small" style="height:34px;font-size:13px;padding:0 12px;">Clear</a>
+            </form>
+        </div>
+
+        <!-- Table -->
+        <?php if (empty($claimsList)): ?>
+            <div style="padding:48px 20px;text-align:center;color:var(--gray-dark);">
+                <p style="font-size:16px;margin:0 0 6px;">No membership claims yet.</p>
+                <p style="font-size:13px;margin:0;">Claims will appear here when staff record a benefit at checkout or during a booking.</p>
+            </div>
+        <?php else: ?>
+            <div style="overflow-x:auto;">
+                <table style="width:100%;border-collapse:collapse;font-size:14px;">
+                    <thead style="background:var(--dark);color:var(--light);font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">
+                        <tr>
+                            <th style="padding:12px 14px;text-align:left;">Date</th>
+                            <th style="padding:12px 14px;text-align:left;">Member</th>
+                            <th style="padding:12px 14px;text-align:left;">Benefit</th>
+                            <?php if ($isAdmin): ?><th style="padding:12px 14px;text-align:left;">Branch</th><?php endif; ?>
+                            <th style="padding:12px 14px;text-align:left;">Applied To</th>
+                            <th style="padding:12px 14px;text-align:left;">Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($claimsList as $c):
+                        $benefit = $BENEFIT_LABELS[$c['benefit_type']] ?? ucfirst($c['benefit_type']);
+
+                        // What was it applied to?
+                        $appliedTo = '—';
+                        if (!empty($c['related_order_id'])) {
+                            $appliedTo = '<a href="orders.php?search=' . (int)$c['related_order_id'] . '" style="color:var(--green);font-weight:700;text-decoration:none;">Order #' . str_pad((string)$c['related_order_id'], 5, '0', STR_PAD_LEFT) . '</a>';
+                        } elseif (!empty($c['related_booking_id'])) {
+                            $appliedTo = '<span style="color:var(--gray-dark);">Booking #' . str_pad((string)$c['related_booking_id'], 5, '0', STR_PAD_LEFT) . '</span>';
+                        }
+                    ?>
+                        <tr style="border-bottom:1px solid var(--gray);" onmouseover="this.style.background='#fafafa'" onmouseout="this.style.background='transparent'">
+                            <td style="padding:12px 14px;white-space:nowrap;">
+                                <span style="font-size:13px;"><?= date('M d, Y', strtotime($c['claim_date'])) ?></span><br>
+                                <span style="font-size:11px;color:var(--gray-dark);"><?= date('h:i A', strtotime($c['claim_date'])) ?></span>
+                            </td>
+                            <td style="padding:12px 14px;">
+                                <strong style="font-size:13px;"><?= htmlspecialchars($c['member_name']) ?></strong><br>
+                                <span style="font-size:11px;color:var(--gray-dark);"><?= htmlspecialchars($c['member_email']) ?></span>
+                            </td>
+                            <td style="padding:12px 14px;">
+                                <span style="display:inline-block;font-size:11px;font-weight:700;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;border-radius:20px;padding:3px 9px;white-space:nowrap;">
+                                    💎 <?= htmlspecialchars($benefit) ?>
+                                </span>
+                            </td>
+                            <?php if ($isAdmin): ?>
+                                <td style="padding:12px 14px;">
+                                    <span style="<?= $pillStyle ?>">📍 <?= htmlspecialchars($c['branch_name'] ?? '—') ?></span>
+                                </td>
+                            <?php endif; ?>
+                            <td style="padding:12px 14px;"><?= $appliedTo ?></td>
+                            <td style="padding:12px 14px;max-width:220px;font-size:12px;color:var(--gray-dark);" title="<?= htmlspecialchars($c['notes'] ?? '') ?>">
+                                <?= htmlspecialchars(mb_strimwidth($c['notes'] ?? '', 0, 60, '…')) ?>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
+    </div>
+    <!-- /claims-log -->
 
     <!-- MEMBERSHIP (HQ only) -->
     <?php if ($isAdmin): ?>
@@ -481,10 +591,12 @@ $kpiColor = fn($n) => $n > 0 ? '#f0ad4e' : 'var(--dark)';
             <h3 style="font-family:var(--font-heading);font-size:20px;text-transform:uppercase;margin:0;">📋 Inventory Activity</h3>
             <form method="GET" action="#activity" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
                 <input type="hidden" name="section" value="activity">
-                <select name="filter_action" style="height:34px;padding:0 10px;border:1px solid var(--gray);border-radius:var(--radius);font-size:13px;background:#fff;">
+                <select name="filter_action" style="<?= $filterInput ?>">
                     <option value="">All Actions</option>
-                    <option value="add"           <?= $afAction === 'add'           ? 'selected' : '' ?>>Add Stock</option>
-                    <option value="update_status" <?= $afAction === 'update_status' ? 'selected' : '' ?>>Status Change</option>
+                    <option value="add"           <?= $afAction === 'add'           ? 'selected' : '' ?>>Stock Added</option>
+                    <option value="update_status" <?= $afAction === 'update_status' ? 'selected' : '' ?>>Inventory Status Changed</option>
+                    <option value="reserve"       <?= $afAction === 'reserve'       ? 'selected' : '' ?>>Order Placed - Stock Reserved</option>
+                    <option value="release"       <?= $afAction === 'release'       ? 'selected' : '' ?>>Order Cancelled - Stock Restored</option>
                 </select>
                 <button type="submit" class="btn btn--green btn--small" style="height:34px;font-size:13px;padding:0 16px;">Filter</button>
                 <a href="dashboard.php#activity" class="btn btn--outline btn--small" style="height:34px;font-size:13px;padding:0 12px;">Clear</a>
@@ -507,8 +619,9 @@ $kpiColor = fn($n) => $n > 0 ? '#f0ad4e' : 'var(--dark)';
                     </thead>
                     <tbody>
                         <?php foreach ($activityLogs as $l):
-                            $labels = ['add'=>'➕ Add Stock','update_status'=>'🔄 Status Change',
-                                       'delete'=>'🗑️ Delete','reserve'=>'🔒 Reserve','release'=>'🔓 Release'];
+                            $labels = ['add'=>'➕ Stock Added','update_status'=>'🔄 Inventory Status Changed',
+                                       'delete'=>'🗑️ Stock Deleted','reserve'=>'🔒 Order Placed - Stock Reserved',
+                                       'release'=>'🔓 Order Cancelled - Stock Restored'];
                         ?>
                             <tr style="border-bottom:1px solid var(--gray);">
                                 <td style="padding:8px 12px;"><?= date('M d, Y H:i', strtotime($l['created_at'])) ?></td>

@@ -26,7 +26,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $brand = trim($_POST['brand'] ?? '');
     $price = trim($_POST['price'] ?? '');
     $description = trim($_POST['description'] ?? '');
-    $categoryIds = $_POST['categories'] ?? [];
+    $categoryIds = array_map('intval', (array)($_POST['categories'] ?? []));
+    $newCategories = array_filter(array_map('trim', (array)($_POST['new_categories'] ?? [])));
     $isFeatured = isset($_POST['is_featured']) ? 1 : 0;
 
     // Validate
@@ -37,6 +38,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         try {
             $pdo->beginTransaction();
+
+            foreach ($newCategories as $newCategory) {
+                $categoryIds[] = getOrCreateCategory($pdo, $newCategory);
+            }
+            $categoryIds = array_values(array_unique(array_filter($categoryIds)));
 
             // Insert product (without image - handled separately)
             $stmt = $pdo->prepare("
@@ -200,17 +206,7 @@ include __DIR__ . '/../../src/Views/layouts/header.php';
                     <p style="color: var(--gray-dark); font-size: 12px; margin-top: 4px;">Supported: JPG, PNG, WebP, GIF (max 5MB)</p>
                 </div>
 
-                <div>
-                    <label style="font-weight: 700; display: block; margin-bottom: 8px;">Categories</label>
-                    <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-                        <?php foreach ($categories as $cat): ?>
-                            <label style="display: flex; align-items: center; gap: 6px; font-size: 14px; padding: 4px 12px; background: var(--light); border-radius: var(--radius); border: 1px solid var(--gray); cursor: pointer;">
-                                <input type="checkbox" name="categories[]" value="<?= $cat['id'] ?>">
-                                <?= htmlspecialchars($cat['name']) ?>
-                            </label>
-                        <?php endforeach; ?>
-                    </div>
-                </div>
+                <?php $selectedCategoryIds = []; include __DIR__ . '/category-picker.php'; ?>
 
                 <div>
                     <label style="font-weight: 700; display: flex; align-items: center; gap: 8px; cursor: pointer;">

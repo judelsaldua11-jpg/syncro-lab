@@ -29,7 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $inventoryId = (int)$_POST['inventory_id'];
     $newStatus = $_POST['status'] ?? '';
 
-    $allowedStatuses = ['in_stock', 'reserved', 'sold', 'returned_qc', 'defective_warranty'];
+    $allowedStatuses = ['in_stock', 'reserved', 'sold'];
     
     if (!in_array($newStatus, $allowedStatuses)) {
         $error = 'Invalid status.';
@@ -138,7 +138,7 @@ if ($isAdmin) {
     $branches = $stmt->fetchAll();
 }
 
-$statusOptions = ['in_stock', 'reserved', 'sold', 'returned_qc', 'defective_warranty'];
+$statusOptions = ['in_stock', 'reserved', 'sold'];
 
 include __DIR__ . '/../../src/Views/layouts/header.php';
 ?>
@@ -241,9 +241,7 @@ include __DIR__ . '/../../src/Views/layouts/header.php';
                                     $statusColors = [
                                         'in_stock' => 'var(--green)',
                                         'reserved' => '#f0ad4e',
-                                        'sold' => '#777777',
-                                        'returned_qc' => '#5bc0de',
-                                        'defective_warranty' => '#d9534f'
+                                        'sold' => '#777777'
                                     ];
                                     $color = $statusColors[$item['status']] ?? '#777777';
                                     $label = ucfirst(str_replace('_', ' ', $item['status']));

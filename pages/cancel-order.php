@@ -30,9 +30,46 @@ if ($orderId <= 0) {
 
 $pdo    = getConnection();
 $userId = (int)$_SESSION['user_id'];
+
+// ── Fetch order details BEFORE cancellation (for refund info in response)
+$orderStmt = $pdo->prepare("
+    SELECT o.total_amount, o.payment_method, o.payment_reference, o.payment_details
+    FROM orders o
+    WHERE o.id = ? AND o.user_id = ?
+    LIMIT 1
+");
+$orderStmt->execute([$orderId, $userId]);
+$orderInfo = $orderStmt->fetch(PDO::FETCH_ASSOC);
+
 $cancellationNote = !empty($reason) ? "Customer cancelled: $reason" : "Customer cancelled order";
 
 $result = cancelOrder($pdo, $orderId, $userId, $cancellationNote);
+
+if ($result['success'] && $orderInfo) {
+    $paymentMethod  = $orderInfo['payment_method'] ?? '';
+    $isCOD          = ($paymentMethod === 'cash_on_delivery');
+    $refundAmount   = (float)($orderInfo['total_amount'] ?? 0);
+
+    // Build human-readable refund message
+    if ($isCOD) {
+        $result['refund_message'] = 'No payment was collected yet (Cash on Delivery). No refund is needed.';
+        $result['refund_eligible'] = false;
+    } else {
+        $methodLabels = [
+            'credit_card' => 'Credit Card',
+            'gcash'       => 'GCash',
+            'paymaya'     => 'PayMaya',
+        ];
+        $methodLabel = $methodLabels[$paymentMethod] ?? ucwords(str_replace('_', ' ', $paymentMethod));
+        $result['refund_message'] = "You are eligible for a refund of ₱" . number_format($refundAmount, 2) . " to your {$methodLabel} account.";
+        $result['refund_eligible'] = true;
+    }
+
+    $result['refund_amount']   = $refundAmount;
+    $result['payment_method']  = $paymentMethod;
+    $result['payment_details'] = $orderInfo['payment_details'] ?? null;
+    $result['payment_ref']     = $orderInfo['payment_reference'] ?? null;
+}
 
 if (!$result['success']) {
     http_response_code(400);
@@ -45,3 +82,4 @@ if (!empty($result['refund_request_id'])) {
 
 echo json_encode($result);
 exit;
+

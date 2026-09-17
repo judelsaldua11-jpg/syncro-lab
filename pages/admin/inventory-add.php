@@ -63,31 +63,93 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (empty($serialNumbers)) {
         $error = 'Please enter at least one serial number.';
     } else {
-        // Split serial numbers by newline or comma
+        $selectedProduct = null;
+        foreach ($products as $product) {
+            if ((int)$product['id'] === $productId) {
+                $selectedProduct = $product;
+                break;
+            }
+        }
+
+        if (!$selectedProduct) {
+            $error = 'Please select a valid product.';
+        } else {
+        $skuParts = array_values(array_filter(explode('-', strtoupper($selectedProduct['sku']))));
+        $serialPrefix = count($skuParts) >= 2
+            ? $skuParts[0] . '-' . $skuParts[1]
+            : strtoupper($selectedProduct['sku']);
+
+        // Split, normalize, and remove blank serial numbers.
         $serials = preg_split('/[\n,]+/', $serialNumbers);
-        $serials = array_map('trim', $serials);
-        $serials = array_filter($serials);
+        $serials = array_map(static function ($serial) {
+            return strtoupper(trim(preg_replace('/\s+/', '', $serial)));
+        }, $serials);
+        $serials = array_values(array_filter($serials));
+
+        foreach ($serials as &$serial) {
+            if (preg_match('/^' . preg_quote($serialPrefix, '/') . '-(\d+)$/', $serial, $matches)) {
+                $number = ltrim($matches[1], '0');
+                $number = $number === '' ? '0' : $number;
+                $serial = $serialPrefix . '-' . str_pad($number, 3, '0', STR_PAD_LEFT);
+            }
+        }
+        unset($serial);
         
         if (empty($serials)) {
-            // FIXED: Removed extra closing parenthesis
             $error = 'Please enter valid serial numbers.';
         } else {
             $addedCount = 0;
             $failedSerials = [];
+            $seenSerials = [];
+            $duplicateInputSerials = [];
+            $serialsToInsert = [];
+
+            foreach ($serials as $serial) {
+                if (!preg_match('/^' . preg_quote($serialPrefix, '/') . '-\d+$/', $serial)) {
+                    $failedSerials[] = $serial . " (must start with {$serialPrefix}- and end with numbers)";
+                    continue;
+                }
+                if (isset($seenSerials[$serial])) {
+                    $duplicateInputSerials[] = $serial;
+                    continue;
+                }
+                $seenSerials[$serial] = true;
+                $serialsToInsert[] = $serial;
+            }
+
+            $existingSerials = [];
+            $placeholders = implode(',', array_fill(0, count($serialsToInsert), '?'));
+            if ($placeholders !== '') {
+                $stmt = $pdo->prepare("SELECT serial_number FROM inventory WHERE serial_number IN ($placeholders)");
+                $stmt->execute($serialsToInsert);
+                $existingSerials = array_map('strtoupper', $stmt->fetchAll(PDO::FETCH_COLUMN));
+            }
+
+            foreach ($existingSerials as $serial) {
+                $failedSerials[] = $serial . ' (already exists)';
+            }
+            foreach ($duplicateInputSerials as $serial) {
+                $failedSerials[] = $serial . ' (entered more than once)';
+            }
+            $serialsToInsert = array_values(array_diff($serialsToInsert, $existingSerials));
+
+            if (empty($serialsToInsert)) {
+                $error = 'No new stock was added. ' . implode(', ', $failedSerials) . '.';
+            } else {
             
             try {
                 $pdo->beginTransaction();
                 $stmt = $pdo->prepare("INSERT INTO inventory (product_id, branch_id, serial_number, status) VALUES (?, ?, ?, 'in_stock')");
                 
-                foreach ($serials as $serial) {
+                foreach ($serialsToInsert as $serial) {
                     try {
                         $stmt->execute([$productId, $branchId, $serial]);
                         $addedCount++;
                     } catch (PDOException $e) {
                         if ($e->errorInfo[1] == 1062) { // Duplicate serial
-                            $failedSerials[] = $serial . ' (duplicate)';
+                            $failedSerials[] = $serial . ' (already exists)';
                         } else {
-                            $failedSerials[] = $serial . ' (' . $e->getMessage() . ')';
+                            $failedSerials[] = $serial . ' (could not be added)';
                         }
                     }
                 }
@@ -119,8 +181,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             } catch (PDOException $e) {
                 $pdo->rollBack();
-                $error = 'Database error: ' . $e->getMessage();
+                $error = 'The stock could not be added. Please check the serial numbers and try again.';
             }
+            }
+        }
         }
     }
 }
@@ -158,7 +222,7 @@ include __DIR__ . '/../../src/Views/layouts/header.php';
                             style="width: 100%; padding: 12px; border: 2px solid var(--gray); border-radius: var(--radius); font-size: 16px; background: #fff;">
                         <option value="0">-- Select Product --</option>
                         <?php foreach ($products as $product): ?>
-                            <option value="<?= $product['id'] ?>">
+                        <option value="<?= $product['id'] ?>" data-serial-prefix="<?= htmlspecialchars(strtoupper(implode('-', array_slice(array_filter(explode('-', $product['sku'])), 0, 2))), ENT_QUOTES) ?>">
                                 <?= htmlspecialchars($product['name']) ?> (<?= htmlspecialchars($product['sku']) ?>)
                             </option>
                         <?php endforeach; ?>
@@ -190,11 +254,16 @@ include __DIR__ . '/../../src/Views/layouts/header.php';
 
                 <div>
                     <label for="serial_numbers" style="font-weight: 700; display: block; margin-bottom: 4px;">Serial Numbers *</label>
-                    <textarea id="serial_numbers" name="serial_numbers" rows="6" required
+                    <div id="serial-prefix-hint" style="display: flex; align-items: center; gap: 8px; min-height: 42px; margin-bottom: 8px; padding: 8px 12px; background: var(--light); border: 1px solid var(--gray); border-radius: var(--radius); color: var(--gray-dark); font-size: 14px;">
+                        <span>Product prefix:</span>
+                        <strong id="serial-prefix-value" style="font-family: monospace; color: var(--dark);">Select a product</strong>
+                        <span id="serial-prefix-example" style="margin-left: auto; font-family: monospace; color: var(--gray-dark);"></span>
+                    </div>
+                    <textarea id="serial_numbers" name="serial_numbers" rows="6" required inputmode="numeric"
                               style="width: 100%; padding: 12px; border: 2px solid var(--gray); border-radius: var(--radius); font-size: 14px; font-family: monospace;"
-                              placeholder="Enter one serial number per line or comma separated&#10;Example:&#10;SN-001&#10;SN-002&#10;SN-003"></textarea>
+                              placeholder="Select a product first, then enter numbers only"></textarea>
                     <p style="color: var(--gray-dark); font-size: 12px; margin-top: 4px;">
-                        Enter one serial number per line or separate with commas. Each serial number must be unique.
+                        Enter one number per line or separate numbers with commas. The product prefix will be added automatically, for example: CS-BB + 006 = CS-BB-006.
                     </p>
                 </div>
 
@@ -211,5 +280,39 @@ include __DIR__ . '/../../src/Views/layouts/header.php';
 
     </div>
 </div>
+
+<script>
+const productSelect = document.getElementById('product_id');
+const serialInput = document.getElementById('serial_numbers');
+const serialPrefixValue = document.getElementById('serial-prefix-value');
+const serialPrefixExample = document.getElementById('serial-prefix-example');
+const inventoryForm = serialInput.closest('form');
+
+function updateSerialHint() {
+    const selected = this.options[this.selectedIndex];
+    const prefix = selected.dataset.serialPrefix || '';
+    serialPrefixValue.textContent = prefix || 'Select a product';
+    serialPrefixExample.textContent = prefix ? `Example: ${prefix}-006` : '';
+    serialInput.placeholder = prefix
+        ? 'Enter numbers only, one per line or comma separated'
+        : 'Select a product first, then enter numbers only';
+}
+
+productSelect.addEventListener('change', updateSerialHint);
+inventoryForm.addEventListener('submit', function () {
+    const selected = productSelect.options[productSelect.selectedIndex];
+    const prefix = selected.dataset.serialPrefix || '';
+    if (!prefix) return;
+
+    serialInput.value = serialInput.value.split(/[\n,]+/).map(value => {
+        const serial = value.trim().toUpperCase().replace(/\s+/g, '');
+        if (/^\d+$/.test(serial)) {
+            serial = serial.replace(/^0+(?=\d)/, '');
+            return `${prefix}-${serial.padStart(3, '0')}`;
+        }
+        return serial;
+    }).filter(Boolean).join('\n');
+});
+</script>
 
 <?php include __DIR__ . '/../../src/Views/layouts/footer.php'; ?>

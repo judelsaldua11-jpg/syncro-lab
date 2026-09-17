@@ -10,11 +10,10 @@ if (!isLoggedIn()) {
     exit;
 }
 
-$pdo = getConnection();
+$pdo    = getConnection();
 $userId = $_SESSION['user_id'];
 $cartId = getOrCreateCart($pdo, $userId);
 
-// Get cart items
 $cartItems = getCartItems($pdo, $cartId);
 $cartTotal = getCartTotal($pdo, $cartId);
 $cartCount = getCartCount($pdo, $cartId);
@@ -24,20 +23,22 @@ if (empty($cartItems)) {
     exit;
 }
 
-// Get all branches (active)
-$branches = getBranches();
-
-// Get saved user addresses
+$branches      = getBranches();
 $userAddresses = getUserAddresses($userId);
 $defaultAddress = getDefaultUserAddress($userId);
 $initialAddressText = $defaultAddress ? $defaultAddress['address_line'] : ($_SESSION['user_address'] ?? '');
 
+/* Live member discount preview */
+$user            = getCurrentUser();
+$checkoutIsMember = !empty($user['membership_expiry']) && strtotime($user['membership_expiry']) > time();
+$checkoutDiscount = $checkoutIsMember ? round($cartTotal * 0.10, 2) : 0;
+$checkoutFinal    = $cartTotal - $checkoutDiscount;
 
-// For each product, get stock per branch
+// Stock per branch per product
 $productStock = [];
 foreach ($cartItems as $item) {
     $stmt = $pdo->prepare("
-        SELECT b.id AS branch_id, b.name AS branch_name, 
+        SELECT b.id AS branch_id, b.name AS branch_name,
                COUNT(i.id) AS stock_count
         FROM inventory i
         JOIN branches b ON i.branch_id = b.id
@@ -50,7 +51,6 @@ foreach ($cartItems as $item) {
     $productStock[$item['product_id']] = $stmt->fetchAll();
 }
 
-// If any product has zero stock across all branches, show error
 $zeroStock = false;
 foreach ($cartItems as $item) {
     if (empty($productStock[$item['product_id']])) {
@@ -68,7 +68,7 @@ include __DIR__ . '/../src/Views/layouts/header.php';
 
 <div style="padding: 40px 0 60px; color: var(--dark); min-height: 60vh; background: var(--light);">
     <div style="max-width: 900px; margin: 0 auto; padding: 0 40px;">
-        
+
         <h1 style="font-family: var(--font-heading); font-size: 48px; text-transform: uppercase; margin-bottom: 8px;">
             Checkout
         </h1>
@@ -84,8 +84,8 @@ include __DIR__ . '/../src/Views/layouts/header.php';
 
         <form method="POST" action="checkout-handler.php">
             <div style="display: grid; gap: 32px;">
-                
-                <?php foreach ($cartItems as $index => $item): ?>
+
+                <?php foreach ($cartItems as $item): ?>
                     <div style="background: #fff; border-radius: var(--radius); border: 1px solid var(--gray); padding: 24px; box-shadow: var(--shadow);">
                         <h3 style="font-family: var(--font-heading); font-size: 20px; margin-bottom: 8px;">
                             <?= htmlspecialchars($item['product_name']) ?>
@@ -98,10 +98,10 @@ include __DIR__ . '/../src/Views/layouts/header.php';
                             <p style="font-weight: 700; font-size: 14px; margin-bottom: 8px;">Select branches and quantities:</p>
                             <?php foreach ($productStock[$item['product_id']] as $branchStock): ?>
                                 <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
-                                    <input type="number" 
-                                           name="branch_quantity[<?= $item['product_id'] ?>][<?= $branchStock['branch_id'] ?>]" 
-                                           min="0" max="<?= $branchStock['stock_count'] ?>" 
-                                           value="0" 
+                                    <input type="number"
+                                           name="branch_quantity[<?= $item['product_id'] ?>][<?= $branchStock['branch_id'] ?>]"
+                                           min="0" max="<?= $branchStock['stock_count'] ?>"
+                                           value="0"
                                            style="width: 70px; padding: 6px; border: 2px solid var(--gray); border-radius: var(--radius); text-align: center;">
                                     <span style="font-weight: 600;"><?= htmlspecialchars($branchStock['branch_name']) ?></span>
                                     <span style="color: var(--gray-dark); font-size: 14px;">(<?= $branchStock['stock_count'] ?> available)</span>
@@ -128,7 +128,7 @@ include __DIR__ . '/../src/Views/layouts/header.php';
                         <div style="margin-bottom: 20px;">
                             <label style="font-weight: 700; display: block; margin-bottom: 8px; font-size: 14px;">Select from your Preseted Addresses:</label>
                             <div style="display: grid; gap: 10px;">
-                                <?php foreach ($userAddresses as $idx => $uAddr): 
+                                <?php foreach ($userAddresses as $idx => $uAddr):
                                     $isSelected = ($defaultAddress && $defaultAddress['id'] == $uAddr['id']) || (!$defaultAddress && $idx === 0);
                                 ?>
                                     <label style="display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; border: 2px solid <?= $isSelected ? 'var(--green)' : 'var(--gray)' ?>; border-radius: var(--radius); cursor: pointer; background: <?= $isSelected ? '#f9fdf2' : '#fff' ?>; transition: all 0.2s ease;" class="preset-address-option">
@@ -185,12 +185,10 @@ include __DIR__ . '/../src/Views/layouts/header.php';
                             </select>
                         </div>
 
-                        <!-- COD Notice -->
                         <div id="codNotice" style="background: #fff8e1; border: 1px solid #f9a825; border-radius: var(--radius); padding: 14px 18px; font-size: 14px; color: #6d4c00;">
                             💵 <strong>Cash on Delivery:</strong> Pay in cash when your order arrives at your delivery address. No payment details needed now.
                         </div>
 
-                        <!-- E-Wallet Section (GCash / PayMaya) -->
                         <div id="walletSection" style="display: none;">
                             <label id="walletLabel" for="wallet_number" style="font-weight: 700; display: block; margin-bottom: 6px; font-size: 14px;">
                                 GCash Mobile Number
@@ -202,39 +200,35 @@ include __DIR__ . '/../src/Views/layouts/header.php';
                             <small style="color: var(--gray-dark); font-size: 12px;">Enter the 11-digit mobile number linked to your e-wallet.</small>
                         </div>
 
-                        <!-- Credit Card Section -->
                         <div id="cardSection" style="display: none;">
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
                                 <div style="grid-column: 1 / -1;">
                                     <label style="font-weight: 700; display: block; margin-bottom: 6px; font-size: 14px;">Cardholder Name</label>
-                                    <input type="text" id="card_name" name="card_name"
-                                           placeholder="Name on card"
+                                    <input type="text" id="card_name" name="card_name" placeholder="Name on card"
                                            style="width: 100%; padding: 12px; border: 2px solid var(--gray); border-radius: var(--radius); font-size: 15px; box-sizing: border-box;">
                                 </div>
                                 <div style="grid-column: 1 / -1;">
                                     <label style="font-weight: 700; display: block; margin-bottom: 6px; font-size: 14px;">Card Number</label>
-                                    <input type="text" id="card_number" name="card_number"
-                                           placeholder="•••• •••• •••• ••••" maxlength="19"
+                                    <input type="text" id="card_number" name="card_number" placeholder="•••• •••• •••• ••••" maxlength="19"
                                            style="width: 100%; padding: 12px; border: 2px solid var(--gray); border-radius: var(--radius); font-size: 16px; letter-spacing: 2px; box-sizing: border-box;"
                                            oninput="formatCardNumber(this)">
                                 </div>
                                 <div>
                                     <label style="font-weight: 700; display: block; margin-bottom: 6px; font-size: 14px;">Expiry (MM/YY)</label>
-                                    <input type="text" id="card_expiry" name="card_expiry"
-                                           placeholder="MM/YY" maxlength="5"
+                                    <input type="text" id="card_expiry" name="card_expiry" placeholder="MM/YY" maxlength="5"
                                            style="width: 100%; padding: 12px; border: 2px solid var(--gray); border-radius: var(--radius); font-size: 15px; box-sizing: border-box;"
                                            oninput="formatCardExpiry(this)">
                                 </div>
                                 <div>
                                     <label style="font-weight: 700; display: block; margin-bottom: 6px; font-size: 14px;">CVV</label>
-                                    <input type="password" id="card_cvv" name="card_cvv"
-                                           placeholder="•••" maxlength="4"
+                                    <input type="password" id="card_cvv" name="card_cvv" placeholder="•••" maxlength="4"
                                            style="width: 100%; padding: 12px; border: 2px solid var(--gray); border-radius: var(--radius); font-size: 15px; box-sizing: border-box;"
                                            oninput="this.value = this.value.replace(/[^0-9]/g, '')">
                                 </div>
                             </div>
                             <small style="color: var(--gray-dark); font-size: 12px; margin-top: 6px; display: block;">🔒 Your card details are processed securely.</small>
                         </div>
+
                         <div>
                             <label style="font-weight: 700; display: flex; align-items: center; gap: 8px; cursor: pointer;">
                                 <input type="checkbox" name="terms" required>
@@ -244,9 +238,38 @@ include __DIR__ . '/../src/Views/layouts/header.php';
                     </div>
                 </div>
 
+                <!-- ═══════════════════════════════════════════════════
+                     ORDER SUMMARY (with auto member discount preview)
+                     ═══════════════════════════════════════════════════ -->
+                <div style="background: #fff; border: 2px solid <?= $checkoutIsMember ? '#a5d6a7' : 'var(--gray)' ?>; border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow);">
+                    <h3 style="font-family: var(--font-heading); font-size: 18px; text-transform: uppercase; margin: 0 0 16px;">Order Summary</h3>
+
+                    <div style="display: flex; justify-content: space-between; font-size: 15px; margin-bottom: 8px;">
+                        <span>Subtotal (<?= $cartCount ?> item<?= $cartCount !== 1 ? 's' : '' ?>)</span>
+                        <strong>₱ <?= number_format($cartTotal, 2) ?></strong>
+                    </div>
+
+                    <?php if ($checkoutIsMember): ?>
+                        <div style="display: flex; justify-content: space-between; font-size: 15px; margin-bottom: 8px; color: #2e7d32;">
+                            <span>💎 Member Discount (10%)</span>
+                            <strong>− ₱ <?= number_format($checkoutDiscount, 2) ?></strong>
+                        </div>
+                    <?php endif; ?>
+
+                    <div style="display: flex; justify-content: space-between; font-size: 20px; padding-top: 12px; border-top: 1px solid var(--gray); margin-top: 12px;">
+                        <strong>Total</strong>
+                        <strong style="color: var(--green); font-family: var(--font-heading);">₱ <?= number_format($checkoutFinal, 2) ?></strong>
+                    </div>
+
+                    <?php if ($checkoutIsMember): ?>
+                        <p style="font-size: 12px; color: #2e7d32; margin: 12px 0 0; font-weight: 600;">
+                            💎 Active member — 10% discount applied automatically at checkout.
+                        </p>
+                    <?php endif; ?>
+                </div>
+
                 <script>
                 function selectPresetAddress(radio) {
-                    // Update visual highlight on option cards
                     document.querySelectorAll('.preset-address-option').forEach(card => {
                         card.style.borderColor = 'var(--gray)';
                         card.style.backgroundColor = '#fff';
@@ -256,18 +279,15 @@ include __DIR__ . '/../src/Views/layouts/header.php';
                         parentCard.style.borderColor = 'var(--green)';
                         parentCard.style.backgroundColor = '#f9fdf2';
                     }
-
                     const textarea = document.getElementById('shipping_address');
                     if (radio.value === 'custom') {
                         textarea.value = '';
                         textarea.focus();
                     } else {
-                        const addrText = radio.getAttribute('data-address') || '';
-                        textarea.value = addrText;
+                        textarea.value = radio.getAttribute('data-address') || '';
                     }
                 }
 
-                // ── Payment method show/hide logic ──
                 function onPaymentMethodChange(method) {
                     const codNotice     = document.getElementById('codNotice');
                     const walletSection = document.getElementById('walletSection');
@@ -275,12 +295,10 @@ include __DIR__ . '/../src/Views/layouts/header.php';
                     const walletLabel   = document.getElementById('walletLabel');
                     const walletInput   = document.getElementById('wallet_number');
 
-                    // Hide all panels first
                     codNotice.style.display     = 'none';
-                    walletSection.style.display  = 'none';
-                    cardSection.style.display    = 'none';
+                    walletSection.style.display = 'none';
+                    cardSection.style.display   = 'none';
 
-                    // Clear required attributes
                     setCardRequired(false);
                     if (walletInput) walletInput.required = false;
 
@@ -316,7 +334,6 @@ include __DIR__ . '/../src/Views/layouts/header.php';
 
                 function validateCheckoutPayment(e) {
                     const method = document.getElementById('payment_method').value;
-
                     if (method === 'gcash' || method === 'paymaya') {
                         const phone = document.getElementById('wallet_number').value;
                         if (!phone || !/^09\d{9}$/.test(phone)) {
@@ -330,7 +347,6 @@ include __DIR__ . '/../src/Views/layouts/header.php';
                         const name = (document.getElementById('card_name').value || '').trim();
                         const exp  = (document.getElementById('card_expiry').value || '').trim();
                         const cvv  = (document.getElementById('card_cvv').value || '').trim();
-
                         if (!name)                             { e.preventDefault(); alert('Please enter the cardholder name.'); return false; }
                         if (num.length < 13 || num.length > 19){ e.preventDefault(); alert('Please enter a valid card number.'); return false; }
                         if (!/^\d{2}\/\d{2}$/.test(exp))       { e.preventDefault(); alert('Please enter a valid card expiry (MM/YY).'); return false; }
@@ -339,13 +355,9 @@ include __DIR__ . '/../src/Views/layouts/header.php';
                     return true;
                 }
 
-                // Attach payment validation to form submit
                 document.querySelector('form').addEventListener('submit', validateCheckoutPayment);
-
-                // Initialize on page load — show COD notice by default
                 onPaymentMethodChange('cash_on_delivery');
                 </script>
-
 
                 <div style="display: flex; gap: 16px; justify-content: flex-end;">
                     <a href="cart.php" class="btn btn--outline" style="height: 48px; font-size: 16px; padding: 0 32px;">Back to Cart</a>
@@ -353,10 +365,8 @@ include __DIR__ . '/../src/Views/layouts/header.php';
                         PLACE ORDER
                     </button>
                 </div>
-
             </div>
         </form>
-
     </div>
 </div>
 

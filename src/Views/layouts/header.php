@@ -1,6 +1,5 @@
 <?php
 // src/Views/layouts/header.php
-// Session, database, and functions are already loaded by index.php
 
 // Get cart data using the already-loaded functions
 $pdo = getConnection();

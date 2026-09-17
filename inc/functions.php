@@ -342,6 +342,35 @@ function reserveInventory($pdo, $productId, $branchId, $quantity) {
     return $stmt->rowCount();
 }
 
+function sentenceCase($value) {
+    $value = trim(preg_replace('/\s+/', ' ', $value));
+    return ucfirst(strtolower($value));
+}
+
+function getOrCreateCategory(PDO $pdo, $name) {
+    $name = sentenceCase($name);
+    if ($name === '') return 0;
+
+    $stmt = $pdo->prepare("SELECT id FROM categories WHERE LOWER(name) = LOWER(?) LIMIT 1");
+    $stmt->execute([$name]);
+    $existingId = $stmt->fetchColumn();
+    if ($existingId) return (int)$existingId;
+
+    $slug = strtolower(trim(preg_replace('/[^a-zA-Z0-9]+/', '-', $name), '-'));
+    $baseSlug = $slug;
+    $suffix = 2;
+    while (true) {
+        $stmt = $pdo->prepare("SELECT id FROM categories WHERE slug = ? LIMIT 1");
+        $stmt->execute([$slug]);
+        if (!$stmt->fetchColumn()) break;
+        $slug = $baseSlug . '-' . $suffix++;
+    }
+
+    $stmt = $pdo->prepare("INSERT INTO categories (name, slug, is_active) VALUES (?, ?, 1)");
+    $stmt->execute([$name, $slug]);
+    return (int)$pdo->lastInsertId();
+}
+
 function releaseExpiredReservations($pdo) {
     $stmt = $pdo->prepare("
         UPDATE inventory 
